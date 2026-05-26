@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ItemType {
+  PHYSICAL
+  DIGITAL
+}
+
+enum RaffleStatus {
+  DRAFT
+  ACTIVE
+  SOLD_OUT
+  EXPIRED
+  DISBANDED
+  COMPLETED
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum RaffleEventType {
+  CREATED
+  TICKET_PURCHASED
+  SOLD_OUT
+  EXPIRED
+  WINNER_SELECTED
+  DISBANDED
+  PAYOUT_SENT
+}
+
+model User {
+  id          String        @id @default(uuid())
+  email       String        @unique
+  phone       String?
+  passwordHash String       @map("password_hash")
+  kycStatus   KycStatus     @default(PENDING) @map("kyc_status")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  raffles      Raffle[]
+  tickets      Ticket[]
+  transactions Transaction[]
+  payouts      Payout[]
+
+  @@map("users")
+}
+
+model Raffle {
+  id             String         @id @default(uuid())
+  rafflerId      String         @map("raffler_id")
+  title          String
+  description    String?
+  itemType       ItemType       @default(PHYSICAL) @map("item_type")
+  totalTickets   Int            @map("total_tickets")
+  ticketPrice    Int            @map("ticket_price")
+  ticketsSold    Int            @default(0) @map("tickets_sold")
+  minSellThrough Int?           @map("min_sell_through")
+  status         RaffleStatus   @default(DRAFT)
+  startTime      DateTime       @default(now()) @map("start_time")
+  endTime        DateTime       @map("end_time")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  raffler      User           @relation(fields: [rafflerId], references: [id])
+  tickets      Ticket[]
+  transactions Transaction[]
+  payouts      Payout[]
+  events       RaffleEvent[]
+
+  @@index([status, endTime])
+  @@index([rafflerId])
+  @@map("raffles")
+}
+
+model Ticket {
+  id            String   @id @default(uuid())
+  raffleId      String   @map("raffle_id")
+  buyerId       String   @map("buyer_id")
+  ticketNumber  Int      @map("ticket_number")
+  transactionId String   @map("transaction_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  raffle      Raffle      @relation(fields: [raffleId], references: [id])
+  buyer       User        @relation(fields: [buyerId], references: [id])
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+
+  @@unique([raffleId, ticketNumber])
+  @@index([buyerId])
+  @@map("tickets")
+}
+
+model Transaction {
+  id                   String            @id @default(uuid())
+  userId               String            @map("user_id")
+  raffleId             String            @map("raffle_id")
+  amount               Int
+  currency             String            @default("usd")
+  stripePaymentIntentId String?          @map("stripe_payment_intent_id")
+  status               TransactionStatus @default(PENDING)
+  createdAt            DateTime          @default(now()) @map("created_at")
+
+  user   User     @relation(fields: [userId], references: [id])
+  raffle Raffle   @relation(fields: [raffleId], references: [id])
+  tickets Ticket[]
+
+  @@map("transactions")
+}
+
+model Payout {
+  id               String       @id @default(uuid())
+  raffleId         String       @map("raffle_id")
+  rafflerId        String       @map("raffler_id")
+  amount           Int
+  stripeTransferId String?      @map("stripe_transfer_id")
+  status           PayoutStatus @default(PENDING)
+  createdAt        DateTime     @default(now()) @map("created_at")
+
+  raffle  Raffle @relation(fields: [raffleId], references: [id])
+  raffler User   @relation(fields: [rafflerId], references: [id])
+
+  @@map("payouts")
+}
+
+model RaffleEvent {
+  id        String          @id @default(uuid())
+  raffleId  String          @map("raffle_id")
+  eventType RaffleEventType @map("event_type")
+  metadata  Json?
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  raffle Raffle @relation(fields: [raffleId], references: [id])
+
+  @@map("raffle_events")
+}

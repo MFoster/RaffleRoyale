@@ -1,0 +1,13 @@
+node_modules/
+
+.DS_Store
+
+.next/
+dist/
+coverage/
+
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
