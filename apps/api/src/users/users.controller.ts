@@ -8,7 +8,6 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { User } from '@prisma/client';
 import { CurrentAuth } from '../auth/current-auth.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
@@ -16,7 +15,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import type { AuthContext } from '../auth/auth.types';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UsersService } from './users.service';
+import { PublicUser, UsersService } from './users.service';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,13 +24,13 @@ export class UsersController {
 
   @Post()
   @Public()
-  create(@Body() createUserDto: CreateUserDto): Promise<User> {
+  create(@Body() createUserDto: CreateUserDto): Promise<PublicUser> {
     return this.usersService.create(createUserDto);
   }
 
   @Get()
   @Roles('ADMIN')
-  findAll(): Promise<User[]> {
+  findAll(): Promise<PublicUser[]> {
     return this.usersService.findAll();
   }
 
@@ -39,7 +38,7 @@ export class UsersController {
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<User> {
+  ): Promise<PublicUser> {
     if (auth.role !== 'ADMIN' && auth.userId !== id) {
       throw new ForbiddenException('Cannot view another user profile');
     }
