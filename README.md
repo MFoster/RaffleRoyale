@@ -9,6 +9,7 @@ An npm workspace monorepo with:
 
 ```bash
 npm install
+npm run prisma:generate -w api
 npm run dev
 ```
 
@@ -29,3 +30,5 @@ npm run test     # run workspace tests
 - API: `http://localhost:3001`
 
 The API enables CORS for `http://localhost:3000` by default. Override with `PORT` and `FRONTEND_URL` when needed.
+
+Set `NEXT_PUBLIC_API_URL` (frontend) if the API is not running on `http://localhost:3001`.
