@@ -115,6 +115,7 @@ export class AuthService {
     });
 
     return {
+      userId,
       accessToken,
       refreshToken,
       tokenType: 'Bearer',
