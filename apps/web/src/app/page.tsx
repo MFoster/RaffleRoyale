@@ -9,6 +9,7 @@ type User = {
 };
 
 type AuthTokens = {
+  userId: string;
   accessToken: string;
 };
 
@@ -24,20 +25,13 @@ type Raffle = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
-const decodeUserIdFromJwt = (accessToken: string): string | null => {
-  const payloadPart = accessToken.split(".")[1];
-  if (!payloadPart) {
-    return null;
-  }
-
-  try {
-    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(base64)) as { sub?: string };
-    return payload.sub ?? null;
-  } catch {
-    return null;
-  }
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const normalizeOptionalText = (value: string) => value.trim() || undefined;
+const getLocalDateTimeInputMinimum = () => {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
 };
 
 const parseErrorMessage = async (response: Response): Promise<string> => {
@@ -57,7 +51,8 @@ export default function Home() {
   const [statusMessage, setStatusMessage] = useState("Ready");
   const [raffles, setRaffles] = useState<Raffle[]>([]);
   const [tokens, setTokens] = useState<AuthTokens | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [sessionEmail, setSessionEmail] = useState("");
 
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
@@ -80,6 +75,7 @@ export default function Home() {
         : undefined,
     [tokens],
   );
+  const minimumEndTime = useMemo(() => getLocalDateTimeInputMinimum(), []);
 
   const loadRaffles = async () => {
     const response = await fetch(`${API_BASE}/raffles`, { cache: "no-store" });
@@ -92,16 +88,24 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadRaffles().catch((error: unknown) => {
+    let cancelled = false;
+
+    const fetchInitialRaffles = async () => {
+      try {
+        await loadRaffles();
+      } catch (error: unknown) {
         const message =
           error instanceof Error ? error.message : "Failed to load raffles";
-        setStatusMessage(message);
-      });
-    }, 0);
+        if (!cancelled) {
+          setStatusMessage(message);
+        }
+      }
+    };
+
+    void fetchInitialRaffles();
 
     return () => {
-      window.clearTimeout(timeoutId);
+      cancelled = true;
     };
   }, []);
 
@@ -112,7 +116,7 @@ export default function Home() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: signupEmail,
+        email: normalizeEmail(signupEmail),
         password: signupPassword,
       }),
     });
@@ -123,7 +127,8 @@ export default function Home() {
     }
 
     const user = (await response.json()) as User;
-    setCurrentUser(user);
+    setCurrentUserId(user.id);
+    setSessionEmail(normalizeEmail(user.email));
     setStatusMessage(`Signed up ${user.email}. Now log in.`);
     setSignupEmail("");
     setSignupPassword("");
@@ -136,7 +141,7 @@ export default function Home() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: loginEmail,
+        email: normalizeEmail(loginEmail),
         password: loginPassword,
       }),
     });
@@ -147,18 +152,16 @@ export default function Home() {
     }
 
     const tokenPair = (await response.json()) as AuthTokens;
-    const userId = decodeUserIdFromJwt(tokenPair.accessToken);
     setTokens(tokenPair);
-    setCurrentUser(
-      userId ? { id: userId, email: loginEmail.toLowerCase() } : null,
-    );
+    setSessionEmail(normalizeEmail(loginEmail));
+    setCurrentUserId(tokenPair.userId);
     setStatusMessage("Logged in.");
     setLoginPassword("");
   };
 
   const handleCreateRaffle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!authorizationHeader || !currentUser) {
+    if (!authorizationHeader || !currentUserId) {
       setStatusMessage("Log in before creating a raffle.");
       return;
     }
@@ -170,9 +173,9 @@ export default function Home() {
         ...authorizationHeader,
       },
       body: JSON.stringify({
-        rafflerId: currentUser.id,
+        rafflerId: currentUserId,
         title,
-        description: description || undefined,
+        description: normalizeOptionalText(description),
         totalTickets: Number(totalTickets),
         ticketPrice: Number(ticketPrice),
         status: "ACTIVE",
@@ -192,7 +195,7 @@ export default function Home() {
   };
 
   const handlePurchase = async (raffleId: string) => {
-    if (!authorizationHeader || !currentUser) {
+    if (!authorizationHeader || !currentUserId) {
       setStatusMessage("Log in before purchasing tickets.");
       return;
     }
@@ -205,7 +208,7 @@ export default function Home() {
         ...authorizationHeader,
       },
       body: JSON.stringify({
-        buyerId: currentUser.id,
+        buyerId: currentUserId,
         quantity,
       }),
     });
@@ -215,7 +218,7 @@ export default function Home() {
       return;
     }
 
-    setStatusMessage(`Purchased ${quantity} ticket(s).`);
+    setStatusMessage(`Purchased ${quantity} ticket${quantity === 1 ? "" : "s"}.`);
     await loadRaffles();
   };
 
@@ -267,8 +270,10 @@ export default function Home() {
               onChange={(event) => setLoginPassword(event.target.value)}
             />
             <button type="submit">Log in</button>
-            {currentUser ? (
-              <p className={styles.inlineMeta}>Signed in as {currentUser.id}</p>
+            {sessionEmail ? (
+              <p className={styles.inlineMeta}>
+                Signed in as {sessionEmail}
+              </p>
             ) : null}
           </form>
 
@@ -314,6 +319,7 @@ export default function Home() {
                 type="datetime-local"
                 required
                 value={endTime}
+                min={minimumEndTime}
                 onChange={(event) => setEndTime(event.target.value)}
               />
             </label>
@@ -328,6 +334,7 @@ export default function Home() {
             {raffles.map((raffle) => {
               const quantity = ticketPurchaseCounts[raffle.id] ?? 1;
               const remaining = raffle.totalTickets - raffle.ticketsSold;
+              const canPurchase = raffle.status === "ACTIVE" && remaining > 0;
 
               return (
                 <li key={raffle.id} className={styles.raffleCard}>
@@ -346,8 +353,9 @@ export default function Home() {
                     <input
                       type="number"
                       min={1}
-                      max={Math.max(1, remaining)}
+                      max={canPurchase ? remaining : 1}
                       value={quantity}
+                      disabled={!canPurchase}
                       onChange={(event) =>
                         setTicketPurchaseCounts((previous) => ({
                           ...previous,
@@ -360,7 +368,7 @@ export default function Home() {
                       onClick={() => {
                         void handlePurchase(raffle.id);
                       }}
-                      disabled={raffle.status !== "ACTIVE" || remaining <= 0}
+                      disabled={!canPurchase}
                     >
                       Buy tickets
                     </button>
