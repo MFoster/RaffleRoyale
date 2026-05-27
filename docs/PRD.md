@@ -4,6 +4,30 @@
 
 *A peer‑to‑peer raffling marketplace*
 
+## **Prototype Scope (Current)**
+
+This PRD includes both prototype requirements and future-state ideas. The current implementation target is intentionally narrow:
+
+* Deployable web + API stack
+* User signup/login
+* Raffler can create/list raffles
+* Participant can purchase tickets
+
+The following remain explicitly **out of scope for the current prototype**:
+
+* Stripe integration
+* Escrow and payout flows
+* KYC/fraud automation
+* Promotions, reputation, and advanced admin workflows
+* Real-time push updates
+
+## **Current Prototype Journey**
+
+1. User signs up with email/password.
+2. User logs in to obtain an authenticated session.
+3. Raffler creates an active raffle with title, description, ticket price, ticket count, and end time.
+4. Participants browse active raffles and purchase one or more tickets.
+
 ## **1\. Product Summary**
 
 **Raffle Royale** is a peer‑to‑peer raffling platform where users can list items they own and sell limited‑quantity tickets for a chance to win them. Once all tickets are sold—or the raffle reaches its maximum duration—the system determines whether the raffle proceeds or is disbanded.
@@ -13,6 +37,12 @@
 It lets sellers earn more than a typical resale price *and* gives buyers a low‑cost chance to win high‑value items.
 
 ## **2\. Goals & Success Metrics**
+
+### **Current Prototype Goals**
+
+* Prove the end-to-end flow for account creation, authentication, raffle listing, and ticket purchase.
+* Validate that the web frontend and API can be run and deployed together.
+* Keep the prototype simple enough to iterate on quickly before introducing payments and compliance workflows.
 
 ### **Primary Goals**
 
