@@ -48,7 +48,7 @@ npm run test     # run workspace tests
 The repository includes two dedicated workflow files:
 
 - `.github/workflows/ci-pr-main.yml`: on **pull requests to `main`**, run `npm ci`, `npm run prisma:generate -w api`, `npm run lint`, `npm run test`, and `npm run build`.
-- `.github/workflows/push-main-ecr.yml`: on **pushes to `main`** (including merged PRs), run the same checks, then build and push Docker images for `api` and `web` to Amazon ECR using each Dockerfile `prod` target.
+- `.github/workflows/push-main-ecr.yml`: on **pushes to `main`** (including merged PRs), run the same checks, then build and push Docker images for `api` and `web` to Amazon ECR using each Dockerfile `prod` target with GitHub Actions layer cache enabled.
 
 Configure these GitHub repository settings before enabling ECR publish:
 
@@ -112,6 +112,12 @@ The compose files start:
 - `web` on `http://localhost:3100`
 - `api` on `http://localhost:3101`
 - `db` on `localhost:5432`
+
+Production image strategy:
+
+- Keep npm workspaces (single root `package-lock.json`) and install only the target workspace in Docker (`npm ci --workspace <name> --include-workspace-root=false`).
+- `apps/web/Dockerfile` uses Next.js standalone output so runtime image copies only standalone server output, static assets, and `public/`.
+- `apps/api/Dockerfile` keeps a workspace-scoped production dependency stage and copies only runtime artifacts (`dist`, Prisma schema/client assets, package manifest).
 
 The API container runs Prisma migrations on startup against the Compose Postgres service.
 The web app proxies all `/api/*` requests through a Next.js rewrite. In Docker, `API_PROXY_TARGET=http://api:3001` forwards those requests to the API service.

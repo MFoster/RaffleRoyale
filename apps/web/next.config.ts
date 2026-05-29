@@ -6,6 +6,7 @@ const apiProxyTarget = (process.env.API_PROXY_TARGET ?? 'http://localhost:3001')
 );
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   async rewrites() {
     return [
       {

@@ -6,8 +6,7 @@ WORKDIR /workspace
 FROM base AS deps
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
-COPY apps/api/package.json apps/api/package.json
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --workspace web --include-workspace-root=false
 
 FROM deps AS dev
 ENV NODE_ENV=development
@@ -17,23 +16,16 @@ CMD ["npm", "run", "dev", "-w", "web", "--", "--hostname", "0.0.0.0", "--port", 
 FROM deps AS build
 ARG API_PROXY_TARGET=http://localhost:3001
 ENV API_PROXY_TARGET=$API_PROXY_TARGET
-COPY . .
+COPY apps/web apps/web
 RUN npm run build -w web
 
-FROM base AS prod-deps
-COPY package.json package-lock.json ./
-COPY apps/web/package.json apps/web/package.json
-COPY apps/api/package.json apps/api/package.json
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --workspace web
-
-FROM base AS prod
+FROM node:20-bookworm-slim AS prod
+WORKDIR /workspace
 ENV NODE_ENV=production
-COPY --from=prod-deps /workspace/node_modules ./node_modules
-COPY package.json package-lock.json ./
-COPY apps/web/package.json apps/web/package.json
-COPY apps/web/next.config.ts apps/web/next.config.ts
-COPY apps/web/public apps/web/public
-COPY --from=build /workspace/apps/web/.next apps/web/.next
-WORKDIR /workspace/apps/web
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+COPY --from=build /workspace/apps/web/.next/standalone ./
+COPY --from=build /workspace/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build /workspace/apps/web/public ./apps/web/public
 EXPOSE 3000
-CMD ["npm", "run", "start", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+CMD ["node", "apps/web/server.js"]

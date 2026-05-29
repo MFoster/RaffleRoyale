@@ -85,6 +85,8 @@ jobs:
           file: apps/${{ matrix.service }}/Dockerfile
           target: prod
           push: true
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:main
@@ -97,6 +99,8 @@ jobs:
           file: apps/${{ matrix.service }}/Dockerfile
           target: prod
           push: true
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
             API_PROXY_TARGET=${{ env.WEB_API_PROXY_TARGET }}
           tags: |
