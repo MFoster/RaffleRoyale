@@ -360,6 +360,59 @@ describe('RafflesService', () => {
     disbandSpy.mockRestore();
   });
 
+  it('does not emit duplicate EXPIRED events when threshold update does not change a row', async () => {
+    mockPrisma.raffle.findMany.mockResolvedValue([
+      {
+        id: raffleId,
+        totalTickets: 10,
+        ticketsSold: 8,
+        minSellThrough: 75,
+      },
+    ]);
+    mockPrisma.raffle.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await service.processExpiredRaffles();
+
+    expect(mockPrisma.raffle.updateMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.raffleEvent.create).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      processed: 1,
+      disbanded: 0,
+      markedExpiredThresholdMet: 0,
+    });
+  });
+
+  it('skips sold-out candidates during expired processing', async () => {
+    const disbandSpy = jest.spyOn(service, 'disbandRaffle').mockResolvedValue({
+      raffleId,
+      raffleStatus: RaffleStatus.DISBANDED,
+      refundedTransactions: 1,
+      sellThroughPercent: 20,
+    });
+
+    mockPrisma.raffle.findMany.mockResolvedValue([
+      {
+        id: raffleId,
+        totalTickets: 10,
+        ticketsSold: 10,
+        minSellThrough: null,
+      },
+    ]);
+
+    const result = await service.processExpiredRaffles();
+
+    expect(disbandSpy).not.toHaveBeenCalled();
+    expect(mockPrisma.raffle.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.raffleEvent.create).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      processed: 1,
+      disbanded: 0,
+      markedExpiredThresholdMet: 0,
+    });
+
+    disbandSpy.mockRestore();
+  });
+
   it('throws when raffle is not found', async () => {
     mockTx.$queryRaw.mockResolvedValue([]);
 

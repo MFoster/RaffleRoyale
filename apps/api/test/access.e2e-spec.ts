@@ -120,6 +120,16 @@ describe('Access Control (e2e)', () => {
     return request(app.getHttpServer()).get('/raffles').expect(200);
   });
 
+  it('allows public user registration without bearer token', async () => {
+    await request(app.getHttpServer())
+      .post('/users')
+      .send({
+        email: 'new-user@example.com',
+        password: 'new-user-password',
+      })
+      .expect(201);
+  });
+
   it('blocks raffle creation when bearer token is missing', () => {
     return request(app.getHttpServer())
       .post('/raffles')

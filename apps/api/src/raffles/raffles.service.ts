@@ -84,6 +84,7 @@ export class RafflesService {
         rafflerId: createRaffleDto.rafflerId,
         title: createRaffleDto.title,
         description: createRaffleDto.description,
+        imageUrls: createRaffleDto.imageUrls ?? [],
         itemType: createRaffleDto.itemType ?? ItemType.PHYSICAL,
         totalTickets: createRaffleDto.totalTickets,
         ticketPrice: createRaffleDto.ticketPrice,

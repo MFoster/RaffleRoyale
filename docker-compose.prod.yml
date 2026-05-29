@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: raffle_royale
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data-prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d raffle_royale"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: prod
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
+      PORT: 3001
+      FRONTEND_URL: http://localhost:3100
+      JWT_SECRET: prod-jwt-secret-change-me
+      JWT_REFRESH_SECRET: prod-jwt-refresh-secret-change-me
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+    command: >
+      sh -c "npm run prisma:migrate:deploy &&
+      npm run start:prod"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3101:3001"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: prod
+      args:
+        API_PROXY_TARGET: http://api:3001
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_PROXY_TARGET: http://api:3001
+    depends_on:
+      - api
+    ports:
+      - "3100:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres-data-prod:

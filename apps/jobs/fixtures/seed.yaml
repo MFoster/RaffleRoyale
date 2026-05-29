@@ -1,0 +1,236 @@
+users:
+  - id: "11111111-1111-4111-8111-111111111111"
+    email: "raffler.one@example.com"
+    phone: "+15550000001"
+    password: "SeedPass123!"
+    kycStatus: "VERIFIED"
+  - id: "22222222-2222-4222-8222-222222222222"
+    email: "buyer.alpha@example.com"
+    phone: "+15550000002"
+    password: "SeedPass123!"
+    kycStatus: "VERIFIED"
+  - id: "33333333-3333-4333-8333-333333333333"
+    email: "buyer.beta@example.com"
+    phone: "+15550000003"
+    password: "SeedPass123!"
+    kycStatus: "PENDING"
+  - id: "44444444-4444-4444-8444-444444444444"
+    email: "raffler.two@example.com"
+    phone: "+15550000004"
+    password: "SeedPass123!"
+    kycStatus: "VERIFIED"
+
+raffles:
+  - id: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    rafflerId: "11111111-1111-4111-8111-111111111111"
+    title: "Air Jordan 1 Retro High OG"
+    description: "Core active raffle with ongoing ticket demand."
+    itemType: "PHYSICAL"
+    totalTickets: 250
+    ticketPrice: 1500
+    ticketsSold: 3
+    minSellThrough: 100
+    status: "ACTIVE"
+    startTime: "2026-05-01T12:00:00.000Z"
+    endTime: "2026-06-01T12:00:00.000Z"
+  - id: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    rafflerId: "44444444-4444-4444-8444-444444444444"
+    title: "PSA 10 Charizard Base Set"
+    description: "Completed raffle with a selected winner."
+    itemType: "PHYSICAL"
+    totalTickets: 5
+    ticketPrice: 2200
+    ticketsSold: 5
+    minSellThrough: 5
+    status: "COMPLETED"
+    startTime: "2026-04-01T12:00:00.000Z"
+    endTime: "2026-04-20T12:00:00.000Z"
+  - id: "ccccccc3-cccc-4ccc-8ccc-ccccccccccc3"
+    rafflerId: "11111111-1111-4111-8111-111111111111"
+    title: "Custom RTX 5090 Creator Build"
+    description: "Raffle that disbanded and refunded buyers."
+    itemType: "PHYSICAL"
+    totalTickets: 120
+    ticketPrice: 1800
+    ticketsSold: 2
+    minSellThrough: 80
+    status: "DISBANDED"
+    startTime: "2026-03-01T12:00:00.000Z"
+    endTime: "2026-03-10T12:00:00.000Z"
+
+transactions:
+  - id: "ddddddd1-dddd-4ddd-8ddd-ddddddddddd1"
+    userId: "22222222-2222-4222-8222-222222222222"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    amount: 1500
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-05-02T09:00:00.000Z"
+  - id: "ddddddd2-dddd-4ddd-8ddd-ddddddddddd2"
+    userId: "33333333-3333-4333-8333-333333333333"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    amount: 1500
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-05-02T09:10:00.000Z"
+  - id: "ddddddd3-dddd-4ddd-8ddd-ddddddddddd3"
+    userId: "44444444-4444-4444-8444-444444444444"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    amount: 1500
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-05-02T09:20:00.000Z"
+  - id: "ddddddd4-dddd-4ddd-8ddd-ddddddddddd4"
+    userId: "22222222-2222-4222-8222-222222222222"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    amount: 2200
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-04-03T08:00:00.000Z"
+  - id: "ddddddd5-dddd-4ddd-8ddd-ddddddddddd5"
+    userId: "22222222-2222-4222-8222-222222222222"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    amount: 2200
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-04-03T08:05:00.000Z"
+  - id: "ddddddd6-dddd-4ddd-8ddd-ddddddddddd6"
+    userId: "33333333-3333-4333-8333-333333333333"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    amount: 2200
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-04-03T08:10:00.000Z"
+  - id: "ddddddd7-dddd-4ddd-8ddd-ddddddddddd7"
+    userId: "33333333-3333-4333-8333-333333333333"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    amount: 2200
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-04-03T08:15:00.000Z"
+  - id: "ddddddd8-dddd-4ddd-8ddd-ddddddddddd8"
+    userId: "44444444-4444-4444-8444-444444444444"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    amount: 2200
+    currency: "usd"
+    status: "SUCCEEDED"
+    createdAt: "2026-04-03T08:20:00.000Z"
+  - id: "ddddddd9-dddd-4ddd-8ddd-ddddddddddd9"
+    userId: "22222222-2222-4222-8222-222222222222"
+    raffleId: "ccccccc3-cccc-4ccc-8ccc-ccccccccccc3"
+    amount: 1800
+    currency: "usd"
+    status: "REFUNDED"
+    createdAt: "2026-03-02T10:00:00.000Z"
+  - id: "eeeeeee0-eeee-4eee-8eee-eeeeeeeeeee0"
+    userId: "33333333-3333-4333-8333-333333333333"
+    raffleId: "ccccccc3-cccc-4ccc-8ccc-ccccccccccc3"
+    amount: 1800
+    currency: "usd"
+    status: "REFUNDED"
+    createdAt: "2026-03-02T10:10:00.000Z"
+
+tickets:
+  - id: "f0000001-f000-4f00-8f00-f00000000001"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    buyerId: "22222222-2222-4222-8222-222222222222"
+    ticketNumber: 1
+    transactionId: "ddddddd1-dddd-4ddd-8ddd-ddddddddddd1"
+  - id: "f0000002-f000-4f00-8f00-f00000000002"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    buyerId: "33333333-3333-4333-8333-333333333333"
+    ticketNumber: 2
+    transactionId: "ddddddd2-dddd-4ddd-8ddd-ddddddddddd2"
+  - id: "f0000003-f000-4f00-8f00-f00000000003"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    buyerId: "44444444-4444-4444-8444-444444444444"
+    ticketNumber: 3
+    transactionId: "ddddddd3-dddd-4ddd-8ddd-ddddddddddd3"
+  - id: "f0000004-f000-4f00-8f00-f00000000004"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    buyerId: "22222222-2222-4222-8222-222222222222"
+    ticketNumber: 1
+    transactionId: "ddddddd4-dddd-4ddd-8ddd-ddddddddddd4"
+  - id: "f0000005-f000-4f00-8f00-f00000000005"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    buyerId: "22222222-2222-4222-8222-222222222222"
+    ticketNumber: 2
+    transactionId: "ddddddd5-dddd-4ddd-8ddd-ddddddddddd5"
+  - id: "f0000006-f000-4f00-8f00-f00000000006"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    buyerId: "33333333-3333-4333-8333-333333333333"
+    ticketNumber: 3
+    transactionId: "ddddddd6-dddd-4ddd-8ddd-ddddddddddd6"
+  - id: "f0000007-f000-4f00-8f00-f00000000007"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    buyerId: "33333333-3333-4333-8333-333333333333"
+    ticketNumber: 4
+    transactionId: "ddddddd7-dddd-4ddd-8ddd-ddddddddddd7"
+  - id: "f0000008-f000-4f00-8f00-f00000000008"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    buyerId: "44444444-4444-4444-8444-444444444444"
+    ticketNumber: 5
+    transactionId: "ddddddd8-dddd-4ddd-8ddd-ddddddddddd8"
+  - id: "f0000009-f000-4f00-8f00-f00000000009"
+    raffleId: "ccccccc3-cccc-4ccc-8ccc-ccccccccccc3"
+    buyerId: "22222222-2222-4222-8222-222222222222"
+    ticketNumber: 1
+    transactionId: "ddddddd9-dddd-4ddd-8ddd-ddddddddddd9"
+  - id: "f0000010-f000-4f00-8f00-f00000000010"
+    raffleId: "ccccccc3-cccc-4ccc-8ccc-ccccccccccc3"
+    buyerId: "33333333-3333-4333-8333-333333333333"
+    ticketNumber: 2
+    transactionId: "eeeeeee0-eeee-4eee-8eee-eeeeeeeeeee0"
+
+payouts:
+  - id: "99999999-9999-4999-8999-999999999999"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    rafflerId: "44444444-4444-4444-8444-444444444444"
+    amount: 9900
+    stripeTransferId: "tr_test_seed_payout_1"
+    status: "SENT"
+    createdAt: "2026-04-20T13:00:00.000Z"
+
+raffleEvents:
+  - id: "ab000001-ab00-4ab0-8ab0-ab0000000001"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    eventType: "CREATED"
+    metadata:
+      source: "seed"
+      channel: "jobs"
+  - id: "ab000002-ab00-4ab0-8ab0-ab0000000002"
+    raffleId: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    eventType: "TICKET_PURCHASED"
+    metadata:
+      ticketsSold: 3
+      lastTicketNumber: 3
+  - id: "ab000003-ab00-4ab0-8ab0-ab0000000003"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    eventType: "CREATED"
+  - id: "ab000004-ab00-4ab0-8ab0-ab0000000004"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    eventType: "SOLD_OUT"
+    metadata:
+      sold: 5
+      total: 5
+  - id: "ab000005-ab00-4ab0-8ab0-ab0000000005"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    eventType: "WINNER_SELECTED"
+    metadata:
+      winnerUserId: "33333333-3333-4333-8333-333333333333"
+      ticketNumber: 4
+  - id: "ab000006-ab00-4ab0-8ab0-ab0000000006"
+    raffleId: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
+    eventType: "PAYOUT_SENT"
+    metadata:
+      payoutId: "99999999-9999-4999-8999-999999999999"
+  - id: "ab000007-ab00-4ab0-8ab0-ab0000000007"
+    raffleId: "ccccccc3-cccc-4ccc-8ccc-ccccccccccc3"
+    eventType: "CREATED"
+  - id: "ab000008-ab00-4ab0-8ab0-ab0000000008"
+    raffleId: "ccccccc3-cccc-4ccc-8ccc-ccccccccccc3"
+    eventType: "DISBANDED"
+    metadata:
+      refundedTransactions:
+        - "ddddddd9-dddd-4ddd-8ddd-ddddddddddd9"
+        - "eeeeeee0-eeee-4eee-8eee-eeeeeeeeeee0"
