@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -29,6 +30,7 @@ export class CreateRaffleDto {
   @ArrayMaxSize(3)
   @IsString({ each: true })
   @MaxLength(2048, { each: true })
+  @Matches(/^\/api\/uploads\/raffles\/[\w.-]+$/, { each: true })
   imageUrls?: string[];
 
   @IsEnum(ItemType)

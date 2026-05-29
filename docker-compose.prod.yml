@@ -39,6 +39,8 @@ services:
         condition: service_healthy
     ports:
       - "3101:3001"
+    volumes:
+      - api-uploads-prod:/workspace/apps/api/uploads/raffles
     restart: unless-stopped
 
   web:
@@ -60,3 +62,4 @@ services:
 
 volumes:
   postgres-data-prod:
+  api-uploads-prod:
