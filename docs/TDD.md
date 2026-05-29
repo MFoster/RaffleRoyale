@@ -3,6 +3,22 @@
 
 ## **MVP Architecture Strategy — Build Simple, Grow Smart**
 
+### **Prototype Scope Cut (Current)**
+
+This document includes both MVP and future-state ideas. For the current prototype, the required scope is intentionally smaller:
+
+* Deployable web + API stack
+* User signup/login
+* Raffler can create/list raffles
+* Participant can purchase tickets
+
+The following are explicitly **deferred** for this prototype:
+
+* Stripe integration
+* Escrow and payout flows
+* KYC/fraud automation
+* Promotion and reputation systems
+
 ### **1\. Core Principle: Start with a Web App**
 
 A web app gives you:
@@ -44,8 +60,8 @@ Below is a clean, scalable architecture that starts simple but evolves well.
 
 ### **Payments**
 
-* Stripe for ticket purchases \+ escrow logic  
-* Stripe Connect for raffler payouts
+* Deferred for current prototype; keep transaction records internal-only for now
+* Stripe and payout integrations are post-prototype milestones
 
 ## **3\. MVP Feature Priorities**
 
@@ -2084,4 +2100,3 @@ ECS handles:
 * Task restarts
 
 You get **zero downtime** and **no servers to manage**.
-

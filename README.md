@@ -6,10 +6,28 @@ An npm workspace monorepo with:
 - `apps/api` - NestJS backend
 - `apps/jobs` - Node.js command runner for database and background jobs
 
+## Prototype scope
+
+This repository currently targets a prototype/MVP with four outcomes:
+
+1. Deployable web + API stack
+2. User sign up and log in
+3. Rafflers can create and list raffles
+4. Participants can buy raffle tickets
+
+### Deferred after the prototype
+
+- Stripe integration
+- Escrow and payout orchestration
+- KYC/fraud workflows
+- Promotions, reputation, and complex admin tooling
+- Real-time push updates
+
 ## Getting started
 
 ```bash
 npm install
+npm run prisma:generate -w api
 npm run dev
 ```
 
@@ -123,3 +141,13 @@ For server-side fetches to this same Next app (before rewrite), you can optional
 ```bash
 NEXT_SERVER_ORIGIN=http://localhost:3000
 ```
+Set `NEXT_PUBLIC_API_URL` (frontend) if the API is not running on `http://localhost:3001`.
+
+## Prototype flow
+
+Once the web and API are running, the homepage supports the full prototype journey:
+
+1. Create an account
+2. Log in
+3. Create an active raffle
+4. Browse raffles and purchase tickets
