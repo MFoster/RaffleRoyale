@@ -40,7 +40,7 @@ services:
     ports:
       - "3101:3001"
     volumes:
-      - api-uploads-prod:/app/uploads/raffles
+      - api-uploads-prod:/workspace/apps/api/uploads/raffles
     restart: unless-stopped
 
   web:
