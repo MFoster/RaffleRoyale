@@ -47,7 +47,7 @@ npm run test     # run workspace tests
 
 The repository includes two dedicated workflow files:
 
-- `.github/workflows/ci-pr-main.yml`: on **pull requests to `main`**, run `npm ci`, `npm run lint`, `npm run test`, and `npm run build`.
+- `.github/workflows/ci-pr-main.yml`: on **pull requests to `main`**, run `npm ci`, `npm run prisma:generate -w api`, `npm run lint`, `npm run test`, and `npm run build`.
 - `.github/workflows/push-main-ecr.yml`: on **pushes to `main`** (including merged PRs), run the same checks, then build and push Docker images for `api` and `web` to Amazon ECR using each Dockerfile `prod` target.
 
 Configure these GitHub repository settings before enabling ECR publish:
