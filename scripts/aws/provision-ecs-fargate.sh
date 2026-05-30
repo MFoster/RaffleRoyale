@@ -11,9 +11,9 @@ set -euo pipefail
 : "${ECS_API_TG_NAME:=raffle-royale-api-tg}"
 : "${ECS_WEB_TG_NAME:=raffle-royale-web-tg}"
 : "${ECR_REPOSITORY_PREFIX:=raffle-royale}"
-: "${API_DATABASE_URL:=postgresql://postgres:postgres@localhost:5432/raffle_royale?schema=public}"
-: "${JWT_SECRET:=change-me-jwt-secret}"
-: "${JWT_REFRESH_SECRET:=change-me-jwt-refresh-secret}"
+: "${API_DATABASE_URL:?Set API_DATABASE_URL to the production PostgreSQL connection string before provisioning ECS}"
+: "${JWT_SECRET:?Set JWT_SECRET before provisioning ECS}"
+: "${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET before provisioning ECS}"
 
 AWS_PAGER=""
 export AWS_PAGER AWS_REGION
