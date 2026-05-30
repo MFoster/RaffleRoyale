@@ -139,16 +139,20 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Validate deploy secrets
+        env:
+          ECS_API_DATABASE_URL: ${{ secrets.ECS_API_DATABASE_URL }}
+          ECS_JWT_SECRET: ${{ secrets.ECS_JWT_SECRET }}
+          ECS_JWT_REFRESH_SECRET: ${{ secrets.ECS_JWT_REFRESH_SECRET }}
         run: |
-          if [ -z "${{ secrets.ECS_API_DATABASE_URL }}" ]; then
+          if [ -z "${ECS_API_DATABASE_URL}" ]; then
             echo "ECS_API_DATABASE_URL secret is required for ECS deployment."
             exit 1
           fi
-          if [ -z "${{ secrets.ECS_JWT_SECRET }}" ]; then
+          if [ -z "${ECS_JWT_SECRET}" ]; then
             echo "ECS_JWT_SECRET secret is required for ECS deployment."
             exit 1
           fi
-          if [ -z "${{ secrets.ECS_JWT_REFRESH_SECRET }}" ]; then
+          if [ -z "${ECS_JWT_REFRESH_SECRET}" ]; then
             echo "ECS_JWT_REFRESH_SECRET secret is required for ECS deployment."
             exit 1
           fi
