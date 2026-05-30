@@ -48,7 +48,7 @@ npm run test     # run workspace tests
 The repository includes two dedicated workflow files:
 
 - `.github/workflows/ci-pr-main.yml`: on **pull requests to `main`**, run `npm ci`, `npm run prisma:generate`, `npm run lint`, `npm run test`, and `npm run build`.
-- `.github/workflows/push-main-ecr.yml`: on **pushes to `main`** (including merged PRs), run the same checks, then build and push Docker images for `api` and `web` to Amazon ECR using each Dockerfile `prod` target with GitHub Actions layer cache enabled.
+- `.github/workflows/push-main-ecr.yml`: on **pushes to `main`** (including merged PRs), run the same checks, build and push Docker images for `api` and `web` to Amazon ECR, then deploy both services to ECS Fargate.
 
 Configure these GitHub repository settings before enabling ECR publish:
 
@@ -56,6 +56,30 @@ Configure these GitHub repository settings before enabling ECR publish:
 - **Variable**: `AWS_REGION` (for example `us-east-1`)
 - **Variable**: `ECR_REPOSITORY_PREFIX` (images are pushed as `<prefix>-api` and `<prefix>-web`)
 - **Variable**: `WEB_API_PROXY_TARGET` (optional, defaults to `http://localhost:3001`; used as the web Docker build arg)
+
+Configure these additional settings for ECS deploy:
+
+- **Variable**: `ECS_CLUSTER` (default `raffle-royale`)
+- **Variable**: `ECS_API_SERVICE` (default `raffle-royale-api`)
+- **Variable**: `ECS_WEB_SERVICE` (default `raffle-royale-web`)
+- **Variable**: `ECS_FRONTEND_URL` (public URL used by API CORS; for example `http://<alb-dns>`)
+- **Secret**: `ECS_API_DATABASE_URL`
+- **Secret**: `ECS_JWT_SECRET`
+- **Secret**: `ECS_JWT_REFRESH_SECRET`
+
+One-time AWS bootstrap for ECS/Fargate (default VPC + public ALB + api/web services):
+
+```bash
+chmod +x scripts/aws/provision-ecs-fargate.sh
+AWS_REGION=us-east-1 ./scripts/aws/provision-ecs-fargate.sh
+```
+
+The script provisions/updates:
+- ECS cluster + services (`raffle-royale-api`, `raffle-royale-web`)
+- ALB + target groups + path routing (`/api` to API, default to web)
+- Security groups and CloudWatch log groups
+- ECS task execution/task roles (if missing)
+- Initial ECS task definitions from `.aws/ecs/task-definition-*.json`
 
 ## Jobs app
 

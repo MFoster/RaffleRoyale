@@ -90,6 +90,7 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:main
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.run_number }}
 
       - name: Build and push web image
         if: matrix.service == 'web'
@@ -106,3 +107,106 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:main
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.run_number }}
+
+  deploy-ecs:
+    name: Deploy API and web to ECS Fargate
+    needs: publish-ecr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX || 'raffle-royale' }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'raffle-royale' }}
+      ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE || 'raffle-royale-api' }}
+      ECS_WEB_SERVICE: ${{ vars.ECS_WEB_SERVICE || 'raffle-royale-web' }}
+      ECS_FRONTEND_URL: ${{ vars.ECS_FRONTEND_URL || 'http://localhost:3000' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Validate deploy secrets
+        run: |
+          if [ -z "${{ secrets.ECS_API_DATABASE_URL }}" ]; then
+            echo "ECS_API_DATABASE_URL secret is required for ECS deployment."
+            exit 1
+          fi
+          if [ -z "${{ secrets.ECS_JWT_SECRET }}" ]; then
+            echo "ECS_JWT_SECRET secret is required for ECS deployment."
+            exit 1
+          fi
+          if [ -z "${{ secrets.ECS_JWT_REFRESH_SECRET }}" ]; then
+            echo "ECS_JWT_REFRESH_SECRET secret is required for ECS deployment."
+            exit 1
+          fi
+
+      - name: Prepare task definition files
+        id: taskdef
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+
+          API_TASK_DEF="$RUNNER_TEMP/task-definition-api.json"
+          WEB_TASK_DEF="$RUNNER_TEMP/task-definition-web.json"
+
+          sed \
+            -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
+            -e "s/__AWS_REGION__/${AWS_REGION}/g" \
+            -e "s|__FRONTEND_URL__|${ECS_FRONTEND_URL}|g" \
+            .aws/ecs/task-definition-api.json > "$API_TASK_DEF"
+
+          sed \
+            -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
+            -e "s/__AWS_REGION__/${AWS_REGION}/g" \
+            .aws/ecs/task-definition-web.json > "$WEB_TASK_DEF"
+
+          echo "api=${API_TASK_DEF}" >> "$GITHUB_OUTPUT"
+          echo "web=${WEB_TASK_DEF}" >> "$GITHUB_OUTPUT"
+
+      - name: Render API task definition
+        id: render-api
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ steps.taskdef.outputs.api }}
+          container-name: api
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-api:${{ github.sha }}
+          environment-variables: |
+            DATABASE_URL=${{ secrets.ECS_API_DATABASE_URL }}
+            JWT_SECRET=${{ secrets.ECS_JWT_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.ECS_JWT_REFRESH_SECRET }}
+
+      - name: Deploy API service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-api.outputs.task-definition }}
+          service: ${{ env.ECS_API_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Render web task definition
+        id: render-web
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ steps.taskdef.outputs.web }}
+          container-name: web
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-web:${{ github.sha }}
+
+      - name: Deploy web service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-web.outputs.task-definition }}
+          service: ${{ env.ECS_WEB_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
