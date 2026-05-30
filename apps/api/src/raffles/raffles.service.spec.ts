@@ -18,6 +18,7 @@ describe('RafflesService', () => {
   const mockTx = {
     $queryRaw: jest.fn(),
     raffle: {
+      create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -36,6 +37,10 @@ describe('RafflesService', () => {
     },
     raffleEvent: {
       create: jest.fn(),
+    },
+    pendingRaffleImageUpload: {
+      findMany: jest.fn(),
+      updateMany: jest.fn(),
     },
   };
 
@@ -56,6 +61,11 @@ describe('RafflesService', () => {
     user: {
       findUnique: jest.fn(),
     },
+    pendingRaffleImageUpload: {
+      createMany: jest.fn(),
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
   } as unknown as Prisma.TransactionClient & {
     $transaction: jest.Mock;
     raffle: {
@@ -70,6 +80,11 @@ describe('RafflesService', () => {
     };
     user: {
       findUnique: jest.Mock;
+    };
+    pendingRaffleImageUpload: {
+      createMany: jest.Mock;
+      findMany: jest.Mock;
+      deleteMany: jest.Mock;
     };
   };
 
@@ -105,9 +120,143 @@ describe('RafflesService', () => {
     });
     mockTx.raffle.update.mockResolvedValue(undefined);
     mockTx.raffle.updateMany.mockResolvedValue({ count: 1 });
+    mockTx.raffle.create.mockResolvedValue({
+      id: raffleId,
+      rafflerId: '33333333-3333-3333-3333-333333333333',
+      title: 'Created raffle',
+      description: null,
+      imageUrls: [],
+      itemType: ItemType.PHYSICAL,
+      totalTickets: 10,
+      ticketPrice: 500,
+      ticketsSold: 0,
+      minSellThrough: null,
+      status: RaffleStatus.DRAFT,
+      startTime: new Date(),
+      endTime: new Date(Date.now() + 3600000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
     mockTx.raffleEvent.create.mockResolvedValue(undefined);
+    mockTx.pendingRaffleImageUpload.findMany.mockResolvedValue([]);
+    mockTx.pendingRaffleImageUpload.updateMany.mockResolvedValue({ count: 0 });
     mockPrisma.raffle.findMany.mockResolvedValue([]);
     mockPrisma.raffle.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: '33333333-3333-3333-3333-333333333333',
+    });
+    mockPrisma.pendingRaffleImageUpload.findMany.mockResolvedValue([]);
+    mockPrisma.pendingRaffleImageUpload.deleteMany.mockResolvedValue({
+      count: 0,
+    });
+  });
+
+  it('claims pending uploads owned by the requester during raffle creation', async () => {
+    const rafflerId = '33333333-3333-3333-3333-333333333333';
+    const imageUrls = [
+      '/api/uploads/raffles/img-a.png',
+      '/api/uploads/raffles/img-b.webp',
+    ];
+    const now = new Date(Date.now() + 60_000).toISOString();
+    mockTx.pendingRaffleImageUpload.findMany.mockResolvedValue([
+      {
+        id: 'upload-a',
+        fileName: 'img-a.png',
+        urlPath: imageUrls[0],
+      },
+      {
+        id: 'upload-b',
+        fileName: 'img-b.webp',
+        urlPath: imageUrls[1],
+      },
+    ]);
+    mockTx.pendingRaffleImageUpload.updateMany.mockResolvedValue({ count: 2 });
+    mockTx.raffle.create.mockResolvedValue({
+      id: raffleId,
+      rafflerId,
+      title: 'Created raffle',
+      description: null,
+      imageUrls,
+      itemType: ItemType.PHYSICAL,
+      totalTickets: 10,
+      ticketPrice: 500,
+      ticketsSold: 0,
+      minSellThrough: null,
+      status: RaffleStatus.DRAFT,
+      startTime: new Date(),
+      endTime: new Date(now),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const result = await service.create(
+      {
+        rafflerId,
+        title: 'Created raffle',
+        totalTickets: 10,
+        ticketPrice: 500,
+        endTime: now,
+        imageUrls,
+        itemType: ItemType.PHYSICAL,
+      },
+      rafflerId,
+    );
+
+    const anyDate = expect.any(Date) as unknown as Date;
+    expect(mockTx.pendingRaffleImageUpload.findMany).toHaveBeenCalledWith({
+      where: {
+        ownerId: rafflerId,
+        consumedAt: null,
+        expiresAt: { gt: anyDate },
+        fileName: { in: ['img-a.png', 'img-b.webp'] },
+      },
+      select: {
+        id: true,
+        fileName: true,
+        urlPath: true,
+      },
+    });
+    expect(mockTx.pendingRaffleImageUpload.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['upload-a', 'upload-b'] },
+        ownerId: rafflerId,
+        consumedAt: null,
+      },
+      data: {
+        raffleId,
+        consumedAt: anyDate,
+      },
+    });
+    expect(result.imageUrls).toEqual(imageUrls);
+  });
+
+  it('rejects raffle creation when imageUrls include missing or unowned uploads', async () => {
+    const rafflerId = '33333333-3333-3333-3333-333333333333';
+    mockTx.pendingRaffleImageUpload.findMany.mockResolvedValue([
+      {
+        id: 'upload-a',
+        fileName: 'img-a.png',
+        urlPath: '/api/uploads/raffles/img-a.png',
+      },
+    ]);
+
+    await expect(
+      service.create(
+        {
+          rafflerId,
+          title: 'Created raffle',
+          totalTickets: 10,
+          ticketPrice: 500,
+          endTime: new Date(Date.now() + 60_000).toISOString(),
+          imageUrls: [
+            '/api/uploads/raffles/img-a.png',
+            '/api/uploads/raffles/img-b.png',
+          ],
+          itemType: ItemType.PHYSICAL,
+        },
+        rafflerId,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('purchases tickets and returns allocation details', async () => {

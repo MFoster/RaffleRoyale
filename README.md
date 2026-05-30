@@ -27,7 +27,7 @@ This repository currently targets a prototype/MVP with four outcomes:
 
 ```bash
 npm install
-npm run prisma:generate -w api
+npm run prisma:generate
 npm run dev
 ```
 
@@ -47,7 +47,7 @@ npm run test     # run workspace tests
 
 The repository includes two dedicated workflow files:
 
-- `.github/workflows/ci-pr-main.yml`: on **pull requests to `main`**, run `npm ci`, `npm run prisma:generate -w api`, `npm run lint`, `npm run test`, and `npm run build`.
+- `.github/workflows/ci-pr-main.yml`: on **pull requests to `main`**, run `npm ci`, `npm run prisma:generate`, `npm run lint`, `npm run test`, and `npm run build`.
 - `.github/workflows/push-main-ecr.yml`: on **pushes to `main`** (including merged PRs), run the same checks, then build and push Docker images for `api` and `web` to Amazon ECR using each Dockerfile `prod` target with GitHub Actions layer cache enabled.
 
 Configure these GitHub repository settings before enabling ECR publish:
@@ -76,6 +76,8 @@ npm run jobs -- seed
 ```
 
 The jobs app loads environment variables from `apps/jobs/.env` and `apps/api/.env` (if present), and expects `DATABASE_URL` for DB commands.
+
+Prisma schema and migrations are owned by `packages/db/prisma` and shared by both API and jobs scripts.
 
 The default seed fixture path is:
 
@@ -133,6 +135,9 @@ The API enables CORS for `http://localhost:3000` by default. Override with `PORT
 The API also runs an internal raffle expiration scheduler every minute. Set
 `RAFFLE_EXPIRATION_CRON_ENABLED=false` to disable background expiration
 processing.
+Raffle image uploads are stored as owner-scoped pending uploads and are claimed
+when the raffle is created. Expired unclaimed uploads are cleaned hourly; set
+`RAFFLE_IMAGE_UPLOAD_CLEANUP_ENABLED=false` to disable that cleanup job.
 
 ### Web API proxy
 

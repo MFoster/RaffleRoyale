@@ -8,12 +8,13 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\" --fix",
-    "prisma:generate": "prisma generate --schema ../api/prisma/schema.prisma",
+    "prisma:generate": "npm run prisma:generate -w @raffleroyale/db",
     "db:health": "tsx src/index.ts db:health",
     "db:stats": "tsx src/index.ts db:stats",
     "seed": "tsx src/index.ts seed"
   },
   "dependencies": {
+    "@raffleroyale/db": "0.1.0",
     "@prisma/client": "^6.16.2",
     "bcryptjs": "^3.0.3",
     "dotenv": "^16.6.1",

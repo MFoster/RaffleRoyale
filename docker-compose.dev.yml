@@ -31,8 +31,8 @@ services:
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
     command: >
-      sh -c "npm run prisma:generate -w api &&
-      npm run prisma:migrate:deploy -w api &&
+      sh -c "npm run prisma:generate &&
+      npm run prisma:migrate:deploy &&
       npm run start:dev -w api"
     depends_on:
       db:

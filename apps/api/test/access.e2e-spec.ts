@@ -12,6 +12,7 @@ describe('Access Control (e2e)', () => {
 
   const mockRafflesService = {
     create: jest.fn((dto: unknown) => dto),
+    uploadImages: jest.fn(() => ({ imageUrls: [] })),
     findAll: jest.fn(() => []),
     findOne: jest.fn((id: string) => ({ id })),
     purchaseTickets: jest.fn(() => ({ ok: true })),
@@ -22,6 +23,10 @@ describe('Access Control (e2e)', () => {
       processed: 0,
       disbanded: 0,
       markedExpiredThresholdMet: 0,
+    })),
+    cleanupExpiredPendingImageUploads: jest.fn(() => ({
+      deletedRecords: 0,
+      deletedFiles: 0,
     })),
   };
 

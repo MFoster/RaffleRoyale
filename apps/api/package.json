@@ -8,10 +8,10 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:generate": "npm run prisma:generate -w @raffleroyale/db",
+    "prisma:migrate:dev": "npm run prisma:migrate:dev -w @raffleroyale/db",
+    "prisma:migrate:deploy": "npm run prisma:migrate:deploy -w @raffleroyale/db",
+    "prisma:seed": "npm run prisma:seed -w @raffleroyale/db",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -24,6 +24,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@raffleroyale/db": "0.1.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",

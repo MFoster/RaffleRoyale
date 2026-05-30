@@ -13,7 +13,7 @@ From the repository root:
 
 ```bash
 npm install
-npm run prisma:generate -w api
+npm run prisma:generate
 ```
 
 Copy `apps/api/.env.example` to `apps/api/.env`, then provide a PostgreSQL database in `DATABASE_URL`.

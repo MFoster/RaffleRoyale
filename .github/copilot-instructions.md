@@ -17,7 +17,7 @@
 - This repository is an npm workspace monorepo with `apps/web` (Next.js 16 / React 19 App Router frontend) and `apps/api` (NestJS backend).
 - The API is where the real product logic lives today. `apps/web` is still close to the default scaffold, while the raffle/auth/domain behavior is implemented in `apps/api`.
 - `apps/api` is organized by Nest modules: `AuthModule`, `UsersModule`, `RafflesModule`, plus a shared `PrismaModule` wired into `AppModule`.
-- Persistence is PostgreSQL through Prisma (`apps/api/prisma/schema.prisma`). The schema centers on `User`, `Raffle`, `Ticket`, `Transaction`, `Payout`, and `RaffleEvent`.
+- Persistence is PostgreSQL through Prisma (`packages/db/prisma/schema.prisma`). The schema centers on `User`, `Raffle`, `Ticket`, `Transaction`, `Payout`, and `RaffleEvent`.
 - The raffle lifecycle is implemented in `apps/api/src/raffles/raffles.service.ts`: create raffle, purchase tickets, mark sold out, resolve winner, disband/refund expired raffles, and process expired raffles in batch.
 - Concurrency safety is intentional. Ticket purchase and other lifecycle transitions use Prisma transactions with `Serializable` isolation plus explicit `SELECT ... FOR UPDATE` row locks on the raffle row.
 - Audit/history is first-class: lifecycle changes are recorded in `RaffleEvent`, so feature work on raffle state usually needs both the main write and an event write.
