@@ -63,6 +63,7 @@ model User {
   tickets      Ticket[]
   transactions Transaction[]
   payouts      Payout[]
+  pendingRaffleImageUploads PendingRaffleImageUpload[]
 
   @@map("users")
 }
@@ -72,6 +73,7 @@ model Raffle {
   rafflerId      String         @map("raffler_id")
   title          String
   description    String?
+  imageUrls      String[]       @default([]) @map("image_urls")
   itemType       ItemType       @default(PHYSICAL) @map("item_type")
   totalTickets   Int            @map("total_tickets")
   ticketPrice    Int            @map("ticket_price")
@@ -88,10 +90,30 @@ model Raffle {
   transactions Transaction[]
   payouts      Payout[]
   events       RaffleEvent[]
+  pendingImageUploads PendingRaffleImageUpload[]
 
   @@index([status, endTime])
   @@index([rafflerId])
   @@map("raffles")
+}
+
+model PendingRaffleImageUpload {
+  id        String   @id @default(uuid())
+  ownerId   String   @map("owner_id")
+  raffleId  String?  @map("raffle_id")
+  fileName  String   @unique @map("file_name")
+  mimeType  String   @map("mime_type")
+  urlPath   String   @map("url_path")
+  expiresAt DateTime @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner  User   @relation(fields: [ownerId], references: [id])
+  raffle Raffle? @relation(fields: [raffleId], references: [id])
+
+  @@index([ownerId, consumedAt, expiresAt])
+  @@index([expiresAt, consumedAt])
+  @@map("pending_raffle_image_uploads")
 }
 
 model Ticket {

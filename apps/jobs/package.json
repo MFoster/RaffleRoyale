@@ -1,0 +1,34 @@
+{
+  "name": "jobs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node.js command runner for ad-hoc and scheduled jobs",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "prisma:generate": "npm run prisma:generate -w @raffleroyale/db",
+    "db:health": "tsx src/index.ts db:health",
+    "db:stats": "tsx src/index.ts db:stats",
+    "seed": "tsx src/index.ts seed"
+  },
+  "dependencies": {
+    "@raffleroyale/db": "0.1.0",
+    "@prisma/client": "^6.16.2",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.6.1",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.18.0",
+    "globals": "^17.0.0",
+    "prisma": "^6.16.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  }
+}

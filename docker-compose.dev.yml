@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: raffle_royale
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d raffle_royale"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
+      PORT: 3001
+      FRONTEND_URL: http://localhost:3100
+      JWT_SECRET: dev-jwt-secret-change-me
+      JWT_REFRESH_SECRET: dev-jwt-refresh-secret-change-me
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+    command: >
+      sh -c "npm run prisma:generate &&
+      npm run prisma:migrate:deploy &&
+      npm run start:dev -w api"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3101:3001"
+    volumes:
+      - .:/workspace
+      - api-node-modules:/workspace/node_modules
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: dev
+      args:
+        API_PROXY_TARGET: http://api:3001
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      API_PROXY_TARGET: http://api:3001
+    depends_on:
+      - api
+    ports:
+      - "3100:3000"
+    volumes:
+      - .:/workspace
+      - web-node-modules:/workspace/node_modules
+      - web-next:/workspace/apps/web/.next
+
+volumes:
+  postgres-data-dev:
+  api-node-modules:
+  web-node-modules:
+  web-next:

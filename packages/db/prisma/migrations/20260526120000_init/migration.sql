@@ -143,4 +143,3 @@ ALTER TABLE "public"."payouts" ADD CONSTRAINT "payouts_raffler_id_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "public"."raffle_events" ADD CONSTRAINT "raffle_events_raffle_id_fkey" FOREIGN KEY ("raffle_id") REFERENCES "public"."raffles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-

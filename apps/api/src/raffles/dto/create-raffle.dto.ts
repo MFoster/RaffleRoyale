@@ -1,12 +1,16 @@
 import { ItemType, RaffleStatus } from '@prisma/client';
 import {
+  ArrayMaxSize,
   IsDateString,
   IsEnum,
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -20,6 +24,14 @@ export class CreateRaffleDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  @MaxLength(2048, { each: true })
+  @Matches(/^\/api\/uploads\/raffles\/[\w.-]+$/, { each: true })
+  imageUrls?: string[];
 
   @IsEnum(ItemType)
   itemType: ItemType = ItemType.PHYSICAL;

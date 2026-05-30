@@ -6,8 +6,11 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { Raffle, RaffleEvent } from '@prisma/client';
 import { CurrentAuth } from '../auth/current-auth.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,7 +20,11 @@ import { RolesGuard } from '../auth/roles.guard';
 import type { AuthContext } from '../auth/auth.types';
 import { CreateRaffleDto } from './dto/create-raffle.dto';
 import { PurchaseTicketsDto } from './dto/purchase-tickets.dto';
-import { RafflesService } from './raffles.service';
+import {
+  MAX_RAFFLE_IMAGE_SIZE_BYTES,
+  MAX_RAFFLE_IMAGE_UPLOADS,
+  RafflesService,
+} from './raffles.service';
 
 @Controller('raffles')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,7 +46,28 @@ export class RafflesController {
       throw new ForbiddenException('Cannot create raffle for another user');
     }
 
-    return this.rafflesService.create(createRaffleDto);
+    return this.rafflesService.create(createRaffleDto, auth.userId);
+  }
+
+  @Post('images')
+  @UseInterceptors(
+    FilesInterceptor('images', MAX_RAFFLE_IMAGE_UPLOADS, {
+      limits: {
+        fileSize: MAX_RAFFLE_IMAGE_SIZE_BYTES,
+        files: MAX_RAFFLE_IMAGE_UPLOADS,
+      },
+    }),
+  )
+  async uploadImages(
+    @UploadedFiles()
+    files: Array<{
+      buffer: Buffer;
+      originalname: string;
+      mimetype: string;
+    }> = [],
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<{ imageUrls: string[] }> {
+    return this.rafflesService.uploadImages(files, auth.userId);
   }
 
   @Get()

@@ -12,6 +12,7 @@ describe('Access Control (e2e)', () => {
 
   const mockRafflesService = {
     create: jest.fn((dto: unknown) => dto),
+    uploadImages: jest.fn(() => ({ imageUrls: [] })),
     findAll: jest.fn(() => []),
     findOne: jest.fn((id: string) => ({ id })),
     purchaseTickets: jest.fn(() => ({ ok: true })),
@@ -22,6 +23,10 @@ describe('Access Control (e2e)', () => {
       processed: 0,
       disbanded: 0,
       markedExpiredThresholdMet: 0,
+    })),
+    cleanupExpiredPendingImageUploads: jest.fn(() => ({
+      deletedRecords: 0,
+      deletedFiles: 0,
     })),
   };
 
@@ -118,6 +123,16 @@ describe('Access Control (e2e)', () => {
 
   it('allows public raffle listing without bearer token', () => {
     return request(app.getHttpServer()).get('/raffles').expect(200);
+  });
+
+  it('allows public user registration without bearer token', async () => {
+    await request(app.getHttpServer())
+      .post('/users')
+      .send({
+        email: 'new-user@example.com',
+        password: 'new-user-password',
+      })
+      .expect(201);
   });
 
   it('blocks raffle creation when bearer token is missing', () => {

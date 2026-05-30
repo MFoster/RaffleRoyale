@@ -12,10 +12,78 @@ import {
   RaffleStatus,
   TransactionStatus,
 } from '@prisma/client';
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRaffleDto } from './dto/create-raffle.dto';
 import { PurchaseTicketsDto } from './dto/purchase-tickets.dto';
+
+export const MAX_RAFFLE_IMAGE_UPLOADS = 3;
+export const MAX_RAFFLE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+const RAFFLE_UPLOADS_DIRECTORY = join(process.cwd(), 'uploads', 'raffles');
+const RAFFLE_UPLOAD_URL_PATTERN = /^\/api\/uploads\/raffles\/([\w.-]+)$/;
+const RAFFLE_IMAGE_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
+const SUPPORTED_IMAGE_SIGNATURES = [
+  {
+    mimeType: 'image/jpeg',
+    extension: '.jpg',
+    matches: (buffer: Buffer) =>
+      buffer.length >= 4 &&
+      buffer[0] === 0xff &&
+      buffer[1] === 0xd8 &&
+      buffer[buffer.length - 2] === 0xff &&
+      buffer[buffer.length - 1] === 0xd9,
+  },
+  {
+    mimeType: 'image/png',
+    extension: '.png',
+    matches: (buffer: Buffer) =>
+      buffer.length >= 8 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a,
+  },
+  {
+    mimeType: 'image/webp',
+    extension: '.webp',
+    matches: (buffer: Buffer) =>
+      buffer.length >= 12 &&
+      buffer[0] === 0x52 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x46 &&
+      buffer[8] === 0x57 &&
+      buffer[9] === 0x45 &&
+      buffer[10] === 0x42 &&
+      buffer[11] === 0x50,
+  },
+  {
+    mimeType: 'image/gif',
+    extension: '.gif',
+    matches: (buffer: Buffer) =>
+      buffer.length >= 6 &&
+      buffer[0] === 0x47 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x38 &&
+      (buffer[4] === 0x37 || buffer[4] === 0x39) &&
+      buffer[5] === 0x61,
+  },
+] as const;
+
+type UploadImageFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+};
 
 type PurchaseTicketsResult = {
   raffleId: string;
@@ -48,16 +116,97 @@ type ProcessExpiredRafflesResult = {
   markedExpiredThresholdMet: number;
 };
 
+type CleanupExpiredPendingUploadsResult = {
+  deletedRecords: number;
+  deletedFiles: number;
+};
+
 const VALID_CREATE_STATUSES = new Set<RaffleStatus>([
   RaffleStatus.DRAFT,
   RaffleStatus.ACTIVE,
 ]);
 
+mkdirSync(RAFFLE_UPLOADS_DIRECTORY, { recursive: true });
+
 @Injectable()
 export class RafflesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createRaffleDto: CreateRaffleDto): Promise<Raffle> {
+  async uploadImages(
+    files: UploadImageFile[] = [],
+    ownerId: string,
+  ): Promise<{ imageUrls: string[] }> {
+    if (files.length === 0) {
+      throw new BadRequestException('Upload at least one image file.');
+    }
+
+    const pendingUploads = files.map((file) => {
+      const normalizedMimeType = file.mimetype.toLowerCase();
+      const imageFormat = SUPPORTED_IMAGE_SIGNATURES.find(
+        (signature) =>
+          signature.mimeType === normalizedMimeType &&
+          signature.matches(file.buffer),
+      );
+
+      if (!imageFormat) {
+        throw new BadRequestException(
+          'Only jpg, png, webp, and gif image files are allowed.',
+        );
+      }
+
+      const fileName = `${Date.now().toString(36)}-${randomUUID()}${imageFormat.extension}`;
+      const urlPath = `/api/uploads/raffles/${fileName}`;
+
+      return {
+        fileName,
+        urlPath,
+        mimeType: imageFormat.mimeType,
+        buffer: file.buffer,
+      };
+    });
+
+    const writtenFileNames: string[] = [];
+    try {
+      for (const upload of pendingUploads) {
+        await writeFile(
+          join(RAFFLE_UPLOADS_DIRECTORY, upload.fileName),
+          upload.buffer,
+        );
+        writtenFileNames.push(upload.fileName);
+      }
+    } catch (error) {
+      await this.removeFilesFromDisk(writtenFileNames);
+      throw error;
+    }
+
+    const expiresAt = new Date(Date.now() + RAFFLE_IMAGE_UPLOAD_TTL_MS);
+
+    try {
+      await this.prisma.pendingRaffleImageUpload.createMany({
+        data: pendingUploads.map((upload) => ({
+          ownerId,
+          fileName: upload.fileName,
+          mimeType: upload.mimeType,
+          urlPath: upload.urlPath,
+          expiresAt,
+        })),
+      });
+    } catch (error) {
+      await this.removeFilesFromDisk(
+        pendingUploads.map((upload) => upload.fileName),
+      );
+      throw error;
+    }
+
+    return {
+      imageUrls: pendingUploads.map((upload) => upload.urlPath),
+    };
+  }
+
+  async create(
+    createRaffleDto: CreateRaffleDto,
+    imageUploadOwnerId: string,
+  ): Promise<Raffle> {
     const endTime = new Date(createRaffleDto.endTime);
     if (endTime.getTime() <= Date.now()) {
       throw new BadRequestException('endTime must be in the future');
@@ -79,33 +228,67 @@ export class RafflesService {
       );
     }
 
-    const raffle = await this.prisma.raffle.create({
-      data: {
-        rafflerId: createRaffleDto.rafflerId,
-        title: createRaffleDto.title,
-        description: createRaffleDto.description,
-        itemType: createRaffleDto.itemType ?? ItemType.PHYSICAL,
-        totalTickets: createRaffleDto.totalTickets,
-        ticketPrice: createRaffleDto.ticketPrice,
-        minSellThrough: createRaffleDto.minSellThrough,
-        status,
-        endTime,
-      },
-    });
+    return this.prisma.$transaction(
+      async (tx) => {
+        const pendingUploads = await this.getPendingUploadsForCreation(
+          createRaffleDto.imageUrls ?? [],
+          imageUploadOwnerId,
+          tx,
+        );
 
-    await this.prisma.raffleEvent.create({
-      data: {
-        raffleId: raffle.id,
-        eventType: 'CREATED',
-        metadata: {
-          status,
-          totalTickets: raffle.totalTickets,
-          ticketPrice: raffle.ticketPrice,
-        },
-      },
-    });
+        const raffle = await tx.raffle.create({
+          data: {
+            rafflerId: createRaffleDto.rafflerId,
+            title: createRaffleDto.title,
+            description: createRaffleDto.description,
+            imageUrls: pendingUploads.map((upload) => upload.urlPath),
+            itemType: createRaffleDto.itemType ?? ItemType.PHYSICAL,
+            totalTickets: createRaffleDto.totalTickets,
+            ticketPrice: createRaffleDto.ticketPrice,
+            minSellThrough: createRaffleDto.minSellThrough,
+            status,
+            endTime,
+          },
+        });
 
-    return raffle;
+        if (pendingUploads.length > 0) {
+          const claimResult = await tx.pendingRaffleImageUpload.updateMany({
+            where: {
+              id: { in: pendingUploads.map((upload) => upload.id) },
+              ownerId: imageUploadOwnerId,
+              consumedAt: null,
+            },
+            data: {
+              raffleId: raffle.id,
+              consumedAt: new Date(),
+            },
+          });
+
+          if (claimResult.count !== pendingUploads.length) {
+            throw new ConflictException(
+              'One or more image uploads were already claimed.',
+            );
+          }
+        }
+
+        await tx.raffleEvent.create({
+          data: {
+            raffleId: raffle.id,
+            eventType: 'CREATED',
+            metadata: {
+              status,
+              totalTickets: raffle.totalTickets,
+              ticketPrice: raffle.ticketPrice,
+            },
+          },
+        });
+
+        return raffle;
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
   }
 
   async findAll(): Promise<Raffle[]> {
@@ -441,6 +624,54 @@ export class RafflesService {
     return result;
   }
 
+  async cleanupExpiredPendingImageUploads(): Promise<CleanupExpiredPendingUploadsResult> {
+    const now = new Date();
+    const expiredUploads = await this.prisma.pendingRaffleImageUpload.findMany({
+      where: {
+        consumedAt: null,
+        expiresAt: { lte: now },
+      },
+      select: {
+        id: true,
+        fileName: true,
+      },
+    });
+
+    let deletedRecords = 0;
+    let deletedFiles = 0;
+
+    for (const upload of expiredUploads) {
+      const deleteResult =
+        await this.prisma.pendingRaffleImageUpload.deleteMany({
+          where: {
+            id: upload.id,
+            consumedAt: null,
+            expiresAt: { lte: now },
+          },
+        });
+
+      if (deleteResult.count === 0) {
+        continue;
+      }
+
+      deletedRecords += 1;
+
+      try {
+        await unlink(join(RAFFLE_UPLOADS_DIRECTORY, upload.fileName));
+        deletedFiles += 1;
+      } catch (error) {
+        if (!this.isErrnoException(error) || error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+    }
+
+    return {
+      deletedRecords,
+      deletedFiles,
+    };
+  }
+
   async processExpiredRaffles(): Promise<ProcessExpiredRafflesResult> {
     const now = new Date();
     const candidates = await this.prisma.raffle.findMany({
@@ -515,5 +746,86 @@ export class RafflesService {
       disbanded,
       markedExpiredThresholdMet,
     };
+  }
+
+  private async getPendingUploadsForCreation(
+    imageUrls: string[],
+    ownerId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<Array<{ id: string; urlPath: string }>> {
+    if (imageUrls.length === 0) {
+      return [];
+    }
+
+    const fileNames = imageUrls.map((imageUrl) => {
+      const match = imageUrl.match(RAFFLE_UPLOAD_URL_PATTERN);
+      if (!match || !match[1]) {
+        throw new BadRequestException(
+          'imageUrls contains an invalid raffle upload URL.',
+        );
+      }
+
+      return match[1];
+    });
+
+    if (new Set(fileNames).size !== fileNames.length) {
+      throw new BadRequestException(
+        'imageUrls cannot contain duplicate files.',
+      );
+    }
+
+    const pendingUploads = await tx.pendingRaffleImageUpload.findMany({
+      where: {
+        ownerId,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+        fileName: { in: fileNames },
+      },
+      select: {
+        id: true,
+        fileName: true,
+        urlPath: true,
+      },
+    });
+
+    if (pendingUploads.length !== fileNames.length) {
+      throw new BadRequestException(
+        'imageUrls includes uploads that are missing, expired, or not owned by the requester.',
+      );
+    }
+
+    const uploadsByFileName = new Map(
+      pendingUploads.map((upload) => [upload.fileName, upload] as const),
+    );
+
+    return fileNames.map((fileName) => {
+      const upload = uploadsByFileName.get(fileName);
+      if (!upload) {
+        throw new BadRequestException(
+          'imageUrls includes uploads that are missing, expired, or not owned by the requester.',
+        );
+      }
+
+      return {
+        id: upload.id,
+        urlPath: upload.urlPath,
+      };
+    });
+  }
+
+  private async removeFilesFromDisk(fileNames: string[]): Promise<void> {
+    for (const fileName of fileNames) {
+      try {
+        await unlink(join(RAFFLE_UPLOADS_DIRECTORY, fileName));
+      } catch (error) {
+        if (!this.isErrnoException(error) || error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+    }
+  }
+
+  private isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+    return error instanceof Error && 'code' in error;
   }
 }

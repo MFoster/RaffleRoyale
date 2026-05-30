@@ -1,10 +1,15 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next';
+import AppThemeProvider from '@/components/AppThemeProvider';
+import './globals.css';
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Raffle Royale MVP",
+  title: {
+    default: 'Raffle Royale',
+    template: '%s | Raffle Royale',
+  },
   description:
-    "Prototype raffle marketplace for signup, listing raffles, and ticket purchases.",
+    'A peer-to-peer raffling marketplace for premium collectibles, streetwear, and gaming gear.',
 };
 
 export default function RootLayout({
@@ -14,7 +19,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AppThemeProvider>{children}</AppThemeProvider>
+      </body>
     </html>
   );
 }
