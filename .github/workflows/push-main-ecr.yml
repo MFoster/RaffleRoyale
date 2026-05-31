@@ -138,6 +138,20 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies for migrations
+        run: npm ci
+
+      - name: Apply Prisma migrations
+        env:
+          DATABASE_URL: ${{ secrets.ECS_API_DATABASE_URL }}
+        run: npm run prisma:migrate:deploy -w @raffleroyale/db
+
       - name: Validate deploy secrets
         env:
           ECS_API_DATABASE_URL: ${{ secrets.ECS_API_DATABASE_URL }}
