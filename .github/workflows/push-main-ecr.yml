@@ -144,8 +144,8 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install db dependencies for migrations
-        run: npm ci --workspace @raffleroyale/db
+      - name: Install dependencies for migrations
+        run: npm ci
 
       - name: Apply Prisma migrations
         env:
