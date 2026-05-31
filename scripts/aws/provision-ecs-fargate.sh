@@ -152,7 +152,7 @@ if [[ "${API_RULE_ARN}" == "None" ]]; then
     --listener-arn "${LISTENER_ARN}" \
     --priority 10 \
     --conditions 'Field=path-pattern,Values=/api,/api/*' \
-    --actions "Type=forward,TargetGroupArn=${API_TG_ARN}" \
+    --actions "Type=forward,TargetGroupArn=${WEB_TG_ARN}" \
     >/dev/null
 fi
 
