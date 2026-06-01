@@ -58,7 +58,8 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX || 'raffle-royale' }}
-      WEB_API_PROXY_TARGET: ${{ vars.WEB_API_PROXY_TARGET || 'http://localhost:3001' }}
+      WEB_API_PROXY_TARGET: ${{ vars.WEB_API_PROXY_TARGET || '' }}
+      ENFORCE_HTTPS: ${{ vars.ENFORCE_HTTPS || 'false' }}
 
     steps:
       - name: Checkout
@@ -76,6 +77,20 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Validate web proxy target
+        run: |
+          if [ -z "${WEB_API_PROXY_TARGET}" ]; then
+            echo "WEB_API_PROXY_TARGET variable is required for production image build."
+            exit 1
+          fi
+          case "${WEB_API_PROXY_TARGET}" in
+            http://*|https://*) ;;
+            *)
+              echo "WEB_API_PROXY_TARGET must be an absolute URL (http:// or https://)."
+              exit 1
+              ;;
+          esac
 
       - name: Build and push api image
         if: matrix.service == 'api'
@@ -122,7 +137,11 @@ jobs:
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'raffle-royale' }}
       ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE || 'raffle-royale-api' }}
       ECS_WEB_SERVICE: ${{ vars.ECS_WEB_SERVICE || 'raffle-royale-web' }}
-      ECS_FRONTEND_URL: ${{ vars.ECS_FRONTEND_URL || 'http://localhost:3000' }}
+      ECS_FRONTEND_URL: ${{ vars.ECS_FRONTEND_URL || '' }}
+      WEB_API_PROXY_TARGET: ${{ vars.WEB_API_PROXY_TARGET || '' }}
+      ECS_API_UPLOADS_EFS_FILESYSTEM_ID: ${{ vars.ECS_API_UPLOADS_EFS_FILESYSTEM_ID || '' }}
+      ECS_API_UPLOADS_EFS_ACCESS_POINT_ID: ${{ vars.ECS_API_UPLOADS_EFS_ACCESS_POINT_ID || '' }}
+      ENFORCE_HTTPS: ${{ vars.ENFORCE_HTTPS || 'false' }}
 
     steps:
       - name: Checkout
@@ -152,6 +171,38 @@ jobs:
             echo "ECS_JWT_REFRESH_SECRET secret is required for ECS deployment."
             exit 1
           fi
+          if [ -z "${ECS_FRONTEND_URL}" ]; then
+            echo "ECS_FRONTEND_URL variable is required for ECS deployment."
+            exit 1
+          fi
+          if [ -z "${WEB_API_PROXY_TARGET}" ]; then
+            echo "WEB_API_PROXY_TARGET variable is required for ECS deployment."
+            exit 1
+          fi
+          case "${WEB_API_PROXY_TARGET}" in
+            http://*|https://*) ;;
+            *)
+              echo "WEB_API_PROXY_TARGET must be an absolute URL (http:// or https://)."
+              exit 1
+              ;;
+          esac
+          if [ "${ENFORCE_HTTPS}" = "true" ]; then
+            case "${ECS_FRONTEND_URL}" in
+              https://*) ;;
+              *)
+                echo "ECS_FRONTEND_URL must use https:// when ENFORCE_HTTPS=true."
+                exit 1
+                ;;
+            esac
+          fi
+          if [ -z "${ECS_API_UPLOADS_EFS_FILESYSTEM_ID}" ]; then
+            echo "ECS_API_UPLOADS_EFS_FILESYSTEM_ID variable is required for ECS deployment."
+            exit 1
+          fi
+          if [ -z "${ECS_API_UPLOADS_EFS_ACCESS_POINT_ID}" ]; then
+            echo "ECS_API_UPLOADS_EFS_ACCESS_POINT_ID variable is required for ECS deployment."
+            exit 1
+          fi
 
       - name: Prepare task definition files
         id: taskdef
@@ -165,11 +216,14 @@ jobs:
             -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
             -e "s/__AWS_REGION__/${AWS_REGION}/g" \
             -e "s|__FRONTEND_URL__|${ECS_FRONTEND_URL}|g" \
+            -e "s/__ECS_API_UPLOADS_EFS_FILESYSTEM_ID__/${ECS_API_UPLOADS_EFS_FILESYSTEM_ID}/g" \
+            -e "s/__ECS_API_UPLOADS_EFS_ACCESS_POINT_ID__/${ECS_API_UPLOADS_EFS_ACCESS_POINT_ID}/g" \
             .aws/ecs/task-definition-api.json > "$API_TASK_DEF"
 
           sed \
             -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
             -e "s/__AWS_REGION__/${AWS_REGION}/g" \
+            -e "s|__WEB_API_PROXY_TARGET__|${WEB_API_PROXY_TARGET}|g" \
             .aws/ecs/task-definition-web.json > "$WEB_TASK_DEF"
 
           echo "api=${API_TASK_DEF}" >> "$GITHUB_OUTPUT"
