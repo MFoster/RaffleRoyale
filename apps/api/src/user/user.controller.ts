@@ -21,8 +21,10 @@ import {
   UserTicketActivityItem,
   UserService,
 } from './user.service';
+import { ApiTags } from '@nestjs/swagger';
 
 @Controller('user')
+@ApiTags('user')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UserController {
   constructor(private readonly userService: UserService) {}

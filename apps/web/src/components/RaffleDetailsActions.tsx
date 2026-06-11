@@ -11,12 +11,13 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { fetchWithAuthRetry } from '@/lib/authenticated-fetch';
+import { rafflePurchaseTickets } from '@/generated/clients';
 import {
   getAuthUserId,
   hasAuthSession,
   subscribeAuthSession,
 } from '@/lib/auth-session';
+import { callApiWithAuthRetry, getApiErrorMessage } from '@/lib/generated-api';
 
 type RaffleStatus =
   | 'DRAFT'
@@ -38,25 +39,6 @@ type RaffleDetailsActionsProps = {
   availableTickets: number;
   ticketPrice: number;
 };
-
-function parseApiErrorMessage(payload: unknown): string {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return 'Unable to purchase tickets right now.';
-  }
-
-  const record = payload as Record<string, unknown>;
-  const message = record.message;
-
-  if (typeof message === 'string') {
-    return message;
-  }
-
-  if (Array.isArray(message) && message.every((item) => typeof item === 'string')) {
-    return message.join(' ');
-  }
-
-  return 'Unable to purchase tickets right now.';
-}
 
 function isPurchaseResponse(payload: unknown): payload is PurchaseResponse {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -139,23 +121,16 @@ export default function RaffleDetailsActions({
     setSubmitting(true);
 
     try {
-      const response = await fetchWithAuthRetry(`/api/raffles/${raffleId}/purchase`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          buyerId: userId,
-          quantity,
-        }),
-      });
-
-      const payload: unknown = await response.json();
-
-      if (!response.ok) {
-        setErrorMessage(parseApiErrorMessage(payload));
-        return;
-      }
+      const payload = await callApiWithAuthRetry((config) =>
+        rafflePurchaseTickets(
+          raffleId,
+          {
+            buyerId: userId,
+            quantity,
+          },
+          config,
+        ),
+      );
 
       if (!isPurchaseResponse(payload)) {
         setErrorMessage('Purchase succeeded but response format was invalid.');
@@ -167,8 +142,10 @@ export default function RaffleDetailsActions({
       );
       setIsDialogOpen(false);
       router.refresh();
-    } catch {
-      setErrorMessage('Network error while purchasing tickets. Please try again.');
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(error, 'Network error while purchasing tickets. Please try again.'),
+      );
     } finally {
       setSubmitting(false);
     }

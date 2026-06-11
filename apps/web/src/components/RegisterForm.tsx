@@ -9,8 +9,10 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AppLink from '@/components/AppLink';
+import { authLogin, userCreate } from '@/generated/clients';
 import { setAuthSession } from '@/lib/auth-session';
 import { markUserJustSignedUp } from '@/components/auth/useOnboardingState';
+import { getApiErrorMessage, getBrowserApiConfig } from '@/lib/generated-api';
 import { toastEmitter } from '@/lib/toastEmitter';
 
 type LoginResponse = {
@@ -35,25 +37,6 @@ function isLoginResponse(payload: unknown): payload is LoginResponse {
     typeof record.accessTokenExpiresIn === 'string' &&
     typeof record.refreshTokenExpiresIn === 'string'
   );
-}
-
-function parseApiErrorMessage(payload: unknown): string {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return 'Unable to create your account right now.';
-  }
-
-  const record = payload as Record<string, unknown>;
-  const message = record.message;
-
-  if (typeof message === 'string') {
-    return message;
-  }
-
-  if (Array.isArray(message) && message.every((item) => typeof item === 'string')) {
-    return message.join(' ');
-  }
-
-  return 'Unable to create your account right now.';
 }
 
 export default function RegisterForm() {
@@ -90,39 +73,19 @@ export default function RegisterForm() {
     setSubmitting(true);
 
     try {
-      const createResponse = await fetch('/api/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      await userCreate(
+        {
           email,
           phone: phoneRaw.length > 0 ? phoneRaw : undefined,
           password,
-        }),
-      });
-
-      const createPayload: unknown = await createResponse.json();
-
-      if (!createResponse.ok) {
-        setErrorMessage(parseApiErrorMessage(createPayload));
-        return;
-      }
-
-      const loginResponse = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
-      });
+        getBrowserApiConfig(),
+      );
 
-      const loginPayload: unknown = await loginResponse.json();
-
-      if (!loginResponse.ok) {
-        setErrorMessage(parseApiErrorMessage(loginPayload));
-        return;
-      }
+      const loginPayload = await authLogin(
+        { email, password },
+        getBrowserApiConfig(),
+      );
 
       if (!isLoginResponse(loginPayload)) {
         setErrorMessage('Account created but login response format was invalid.');
@@ -141,8 +104,13 @@ export default function RegisterForm() {
       
       router.push('/');
       router.refresh();
-    } catch {
-      setErrorMessage('Network error while creating your account. Please try again.');
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(
+          error,
+          'Network error while creating your account. Please try again.',
+        ),
+      );
     } finally {
       setSubmitting(false);
     }

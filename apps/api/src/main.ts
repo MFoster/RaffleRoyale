@@ -30,7 +30,12 @@ async function bootstrap() {
     .build();
 
   // 2. Create the OpenAPI document object
-  const document = SwaggerModule.createDocument(app, config);
+  const document = SwaggerModule.createDocument(app, config, {
+    operationIdFactory: (controllerKey: string, methodKey: string) =>
+      controllerKey.replace('Controller', '') +
+      methodKey.charAt(0).toUpperCase() +
+      methodKey.slice(1),
+  });
 
   // Optional: Save the JSON specification locally on server start
   fs.writeFileSync('./openapi.json', JSON.stringify(document, null, 2));

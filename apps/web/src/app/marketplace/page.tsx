@@ -7,7 +7,8 @@ import SiteHeader from '@/components/SiteHeader';
 import MarketplaceBrowser from '@/components/marketplace/MarketplaceBrowser';
 import type { RaffleData } from '@/components/home/EnhancedRaffleCard';
 import { royaleTokens } from '@/design-system';
-import { fetchApiResponse } from '@/lib/api';
+import { raffleFindAll } from '@/generated/clients';
+import { getApiErrorMessage, getServerApiConfig } from '@/lib/generated-api';
 
 export const metadata: Metadata = {
   title: 'Marketplace',
@@ -97,23 +98,14 @@ function parseMarketplaceRaffles(payload: unknown): MarketplaceRaffleData[] {
 }
 
 async function fetchMarketplaceRaffles(): Promise<FetchMarketplaceRafflesResult> {
-  const apiResult = await fetchApiResponse('/raffles', { cache: 'no-store' });
-
-  if (!apiResult.ok) {
-    return { ok: false, error: apiResult.error };
-  }
-
   try {
-    const { response } = apiResult;
-
-    if (!response.ok) {
-      return { ok: false, error: `Marketplace API responded with ${String(response.status)}.` };
-    }
-
-    const payload: unknown = await response.json();
+    const payload = await raffleFindAll(getServerApiConfig());
     return { ok: true, data: parseMarketplaceRaffles(payload) };
-  } catch {
-    return { ok: false, error: 'Could not load marketplace listings from the API.' };
+  } catch (error) {
+    return {
+      ok: false,
+      error: getApiErrorMessage(error, 'Could not load marketplace listings from the API.'),
+    };
   }
 }
 

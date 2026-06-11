@@ -18,7 +18,8 @@ import { alpha } from '@mui/material/styles';
 import ImagePlaceholder from '@/components/ImagePlaceholder';
 import SiteHeader from '@/components/SiteHeader';
 import { royaleTokens } from '@/design-system';
-import { fetchApiResponse } from '@/lib/api';
+import { raffleFindAll } from '@/generated/clients';
+import { getApiErrorMessage, getServerApiConfig } from '@/lib/generated-api';
 
 export const metadata: Metadata = {
   title: 'Home',
@@ -250,30 +251,15 @@ function parseRaffleListItems(payload: unknown): RaffleListItem[] {
 }
 
 async function fetchLiveRaffles(): Promise<FetchRafflesResult> {
-  const apiResult = await fetchApiResponse('/raffles', { cache: 'no-store' });
-
-  if (!apiResult.ok) {
-    return { ok: false, error: apiResult.error };
-  }
-
   try {
-    const { response } = apiResult;
-
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: `Raffles endpoint returned ${response.status}.`,
-      };
-    }
-
-    const payload: unknown = await response.json();
+    const payload = await raffleFindAll(getServerApiConfig());
     const raffles = parseRaffleListItems(payload);
 
     return { ok: true, data: raffles };
-  } catch {
+  } catch (error) {
     return {
       ok: false,
-      error: 'Could not load live raffles from the API.',
+      error: getApiErrorMessage(error, 'Could not load live raffles from the API.'),
     };
   }
 }

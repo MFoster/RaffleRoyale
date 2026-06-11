@@ -1,116 +1,116 @@
 export type {
-  AppControllerGetRoot200,
-  AppControllerGetRootQuery,
-  AppControllerGetRootQueryResponse,
-} from "./AppControllerGetRoot.ts";
+  AppGetRoot200,
+  AppGetRootQuery,
+  AppGetRootQueryResponse,
+} from "./AppGetRoot.ts";
 export type {
-  AuthControllerIssueToken201,
-  AuthControllerIssueTokenMutation,
-  AuthControllerIssueTokenMutationRequest,
-  AuthControllerIssueTokenMutationResponse,
-} from "./AuthControllerIssueToken.ts";
+  AuthIssueToken201,
+  AuthIssueTokenMutation,
+  AuthIssueTokenMutationRequest,
+  AuthIssueTokenMutationResponse,
+} from "./AuthIssueToken.ts";
 export type {
-  AuthControllerLogin201,
-  AuthControllerLoginMutation,
-  AuthControllerLoginMutationRequest,
-  AuthControllerLoginMutationResponse,
-} from "./AuthControllerLogin.ts";
+  AuthLogin201,
+  AuthLoginMutation,
+  AuthLoginMutationRequest,
+  AuthLoginMutationResponse,
+} from "./AuthLogin.ts";
 export type {
-  AuthControllerRefresh201,
-  AuthControllerRefreshMutation,
-  AuthControllerRefreshMutationRequest,
-  AuthControllerRefreshMutationResponse,
-} from "./AuthControllerRefresh.ts";
+  AuthRefresh201,
+  AuthRefreshMutation,
+  AuthRefreshMutationRequest,
+  AuthRefreshMutationResponse,
+} from "./AuthRefresh.ts";
 export type { CreateRaffleDto } from "./CreateRaffleDto.ts";
 export type { CreateUserDto } from "./CreateUserDto.ts";
 export type { LoginDto } from "./LoginDto.ts";
 export type { PurchaseTicketsDto } from "./PurchaseTicketsDto.ts";
 export type {
-  RaffleControllerCreate201,
-  RaffleControllerCreateMutation,
-  RaffleControllerCreateMutationRequest,
-  RaffleControllerCreateMutationResponse,
-} from "./RaffleControllerCreate.ts";
+  RaffleCreate201,
+  RaffleCreateMutation,
+  RaffleCreateMutationRequest,
+  RaffleCreateMutationResponse,
+} from "./RaffleCreate.ts";
 export type {
-  RaffleControllerDisband201,
-  RaffleControllerDisbandMutation,
-  RaffleControllerDisbandMutationResponse,
-  RaffleControllerDisbandPathParams,
-} from "./RaffleControllerDisband.ts";
+  RaffleDisband201,
+  RaffleDisbandMutation,
+  RaffleDisbandMutationResponse,
+  RaffleDisbandPathParams,
+} from "./RaffleDisband.ts";
 export type {
-  RaffleControllerFindAll200,
-  RaffleControllerFindAllQuery,
-  RaffleControllerFindAllQueryResponse,
-} from "./RaffleControllerFindAll.ts";
+  RaffleFindAll200,
+  RaffleFindAllQuery,
+  RaffleFindAllQueryResponse,
+} from "./RaffleFindAll.ts";
 export type {
-  RaffleControllerFindEvents200,
-  RaffleControllerFindEventsPathParams,
-  RaffleControllerFindEventsQuery,
-  RaffleControllerFindEventsQueryResponse,
-} from "./RaffleControllerFindEvents.ts";
+  RaffleFindEvents200,
+  RaffleFindEventsPathParams,
+  RaffleFindEventsQuery,
+  RaffleFindEventsQueryResponse,
+} from "./RaffleFindEvents.ts";
 export type {
-  RaffleControllerFindOne200,
-  RaffleControllerFindOnePathParams,
-  RaffleControllerFindOneQuery,
-  RaffleControllerFindOneQueryResponse,
-} from "./RaffleControllerFindOne.ts";
+  RaffleFindOne200,
+  RaffleFindOnePathParams,
+  RaffleFindOneQuery,
+  RaffleFindOneQueryResponse,
+} from "./RaffleFindOne.ts";
 export type {
-  RaffleControllerProcessExpiredRaffles201,
-  RaffleControllerProcessExpiredRafflesMutation,
-  RaffleControllerProcessExpiredRafflesMutationResponse,
-} from "./RaffleControllerProcessExpiredRaffles.ts";
+  RaffleProcessExpiredRaffles201,
+  RaffleProcessExpiredRafflesMutation,
+  RaffleProcessExpiredRafflesMutationResponse,
+} from "./RaffleProcessExpiredRaffles.ts";
 export type {
-  RaffleControllerPurchaseTickets201,
-  RaffleControllerPurchaseTicketsMutation,
-  RaffleControllerPurchaseTicketsMutationRequest,
-  RaffleControllerPurchaseTicketsMutationResponse,
-  RaffleControllerPurchaseTicketsPathParams,
-} from "./RaffleControllerPurchaseTickets.ts";
+  RafflePurchaseTickets201,
+  RafflePurchaseTicketsMutation,
+  RafflePurchaseTicketsMutationRequest,
+  RafflePurchaseTicketsMutationResponse,
+  RafflePurchaseTicketsPathParams,
+} from "./RafflePurchaseTickets.ts";
 export type {
-  RaffleControllerResolveWinner201,
-  RaffleControllerResolveWinnerMutation,
-  RaffleControllerResolveWinnerMutationResponse,
-  RaffleControllerResolveWinnerPathParams,
-} from "./RaffleControllerResolveWinner.ts";
+  RaffleResolveWinner201,
+  RaffleResolveWinnerMutation,
+  RaffleResolveWinnerMutationResponse,
+  RaffleResolveWinnerPathParams,
+} from "./RaffleResolveWinner.ts";
 export type {
-  RaffleControllerUploadImages201,
-  RaffleControllerUploadImagesMutation,
-  RaffleControllerUploadImagesMutationResponse,
-} from "./RaffleControllerUploadImages.ts";
+  RaffleUploadImages201,
+  RaffleUploadImagesMutation,
+  RaffleUploadImagesMutationResponse,
+} from "./RaffleUploadImages.ts";
 export type { RefreshTokenDto } from "./RefreshTokenDto.ts";
 export type { RequestTokenDto } from "./RequestTokenDto.ts";
 export type {
-  UserControllerCreate201,
-  UserControllerCreateMutation,
-  UserControllerCreateMutationRequest,
-  UserControllerCreateMutationResponse,
-} from "./UserControllerCreate.ts";
+  UserCreate201,
+  UserCreateMutation,
+  UserCreateMutationRequest,
+  UserCreateMutationResponse,
+} from "./UserCreate.ts";
 export type {
-  UserControllerFindActivity200,
-  UserControllerFindActivityPathParams,
-  UserControllerFindActivityQuery,
-  UserControllerFindActivityQueryResponse,
-} from "./UserControllerFindActivity.ts";
+  UserFindActivity200,
+  UserFindActivityPathParams,
+  UserFindActivityQuery,
+  UserFindActivityQueryResponse,
+} from "./UserFindActivity.ts";
 export type {
-  UserControllerFindAll200,
-  UserControllerFindAllQuery,
-  UserControllerFindAllQueryResponse,
-} from "./UserControllerFindAll.ts";
+  UserFindAll200,
+  UserFindAllQuery,
+  UserFindAllQueryResponse,
+} from "./UserFindAll.ts";
 export type {
-  UserControllerFindOne200,
-  UserControllerFindOnePathParams,
-  UserControllerFindOneQuery,
-  UserControllerFindOneQueryResponse,
-} from "./UserControllerFindOne.ts";
+  UserFindOne200,
+  UserFindOnePathParams,
+  UserFindOneQuery,
+  UserFindOneQueryResponse,
+} from "./UserFindOne.ts";
 export type {
-  UserControllerFindTicketActivity200,
-  UserControllerFindTicketActivityPathParams,
-  UserControllerFindTicketActivityQuery,
-  UserControllerFindTicketActivityQueryResponse,
-} from "./UserControllerFindTicketActivity.ts";
+  UserFindTicketActivity200,
+  UserFindTicketActivityPathParams,
+  UserFindTicketActivityQuery,
+  UserFindTicketActivityQueryResponse,
+} from "./UserFindTicketActivity.ts";
 export type {
-  UserControllerFindUserRaffles200,
-  UserControllerFindUserRafflesPathParams,
-  UserControllerFindUserRafflesQuery,
-  UserControllerFindUserRafflesQueryResponse,
-} from "./UserControllerFindUserRaffles.ts";
+  UserFindUserRaffles200,
+  UserFindUserRafflesPathParams,
+  UserFindUserRafflesQuery,
+  UserFindUserRafflesQueryResponse,
+} from "./UserFindUserRaffles.ts";
