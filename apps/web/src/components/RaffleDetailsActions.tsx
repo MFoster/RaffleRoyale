@@ -181,7 +181,7 @@ export default function RaffleDetailsActions({
           <Button variant="contained" size="large" disabled={!canPurchase} onClick={handleOpenDialog}>
             Buy tickets
           </Button>
-          <Button href="/#featured-raffles" variant="outlined" size="large">
+          <Button href="/marketplace" variant="outlined" size="large">
             Browse more raffles
           </Button>
           <Button href="/raffles/create" variant="outlined" size="large">
@@ -277,7 +277,7 @@ export default function RaffleDetailsActions({
       <Button href="/register" variant="contained" size="large">
         Create account to participate
       </Button>
-      <Button href="/#featured-raffles" variant="outlined" size="large">
+      <Button href="/marketplace" variant="outlined" size="large">
         Browse more raffles
       </Button>
     </Stack>

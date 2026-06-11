@@ -230,7 +230,7 @@ export default async function RaffleDetailsPage({
       <Container maxWidth="lg" sx={{ pt: { xs: 5, md: 8 }, px: { xs: 2.5, md: 4 } }}>
         <Stack spacing={4}>
           <Button
-            href="/#featured-raffles"
+            href="/marketplace"
             variant="outlined"
             color="inherit"
             sx={{ alignSelf: 'flex-start' }}

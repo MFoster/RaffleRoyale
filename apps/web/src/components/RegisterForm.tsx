@@ -10,6 +10,8 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AppLink from '@/components/AppLink';
 import { setAuthSession } from '@/lib/auth-session';
+import { markUserJustSignedUp } from '@/components/auth/useOnboardingState';
+import { toastEmitter } from '@/lib/toastEmitter';
 
 type LoginResponse = {
   accessToken: string;
@@ -128,6 +130,15 @@ export default function RegisterForm() {
       }
 
       setAuthSession(loginPayload, true);
+      markUserJustSignedUp();
+      
+      // Show success toast
+      toastEmitter.emit('success', {
+        title: '✅ Welcome to Raffle Royale!',
+        message: 'Your account has been created successfully.',
+        duration: 5000,
+      });
+      
       router.push('/');
       router.refresh();
     } catch {

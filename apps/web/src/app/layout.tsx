@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import AppThemeProvider from '@/components/AppThemeProvider';
+import AppWithOnboarding from '@/components/AppWithOnboarding';
 import './globals.css';
-import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
@@ -20,7 +20,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AppThemeProvider>{children}</AppThemeProvider>
+        <AppThemeProvider>
+          <AppWithOnboarding>{children}</AppWithOnboarding>
+        </AppThemeProvider>
       </body>
     </html>
   );
