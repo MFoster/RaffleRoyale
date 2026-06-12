@@ -5,17 +5,14 @@ import ConfirmationNumberRounded from '@mui/icons-material/ConfirmationNumberRou
 import Inventory2Rounded from '@mui/icons-material/Inventory2Rounded';
 import VisibilityRounded from '@mui/icons-material/VisibilityRounded';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import EnhancedHomepageRaffles from '@/components/home/EnhancedHomepageRaffles';
 import { alpha } from '@mui/material/styles';
-import ImagePlaceholder from '@/components/ImagePlaceholder';
 import SiteHeader from '@/components/SiteHeader';
 import { royaleTokens } from '@/design-system';
 import { raffleFindAll } from '@/generated/clients';

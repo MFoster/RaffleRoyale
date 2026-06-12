@@ -86,7 +86,15 @@ export default function FeaturedCarousel({
       }
     };
   }, [resetAutoAdvanceTimer]);
+  const pauseAutoAdvance = useCallback(() => {
+    setAutoAdvanceEnabled(false);
 
+    if (autoAdvanceTimerRef.current) {
+      clearInterval(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+  }, []);
+  
   const handlePrevious = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + totalSlides) % totalSlides);
     resetAutoAdvanceTimer();
@@ -124,14 +132,7 @@ export default function FeaturedCarousel({
   const currentRaffle = visibleRaffles[currentIndex];
   const autoAdvanceCheckboxId = 'featured-raffles-auto-advance';
 
-  const pauseAutoAdvance = useCallback(() => {
-    setAutoAdvanceEnabled(false);
 
-    if (autoAdvanceTimerRef.current) {
-      clearInterval(autoAdvanceTimerRef.current);
-      autoAdvanceTimerRef.current = null;
-    }
-  }, []);
 
   return (
     <Box

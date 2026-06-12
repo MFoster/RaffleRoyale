@@ -9,7 +9,7 @@ import {
 } from '@/lib/auth-session';
 import type { RequestConfig } from '@kubb/plugin-client/clients/axios';
 
-type ApiRequestConfig = Partial<RequestConfig<any>>;
+type ApiRequestConfig<TData = never> = Partial<RequestConfig<TData>>;
 
 type ApiErrorLike = {
   response?: {
@@ -79,7 +79,7 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
   return message ?? fallback;
 }
 
-export function getBrowserApiConfig(): ApiRequestConfig {
+export function getBrowserApiConfig<TData = never>(): ApiRequestConfig<TData> {
   return { baseURL: '/api' };
 }
 
@@ -95,19 +95,19 @@ export function getServerApiBaseUrl(): string {
   return 'http://localhost:3001';
 }
 
-export function getServerApiConfig(): ApiRequestConfig {
+export function getServerApiConfig<TData = never>(): ApiRequestConfig<TData> {
   return { baseURL: getServerApiBaseUrl() };
 }
 
-export async function callApiWithAuthRetry<T>(
-  execute: (config: ApiRequestConfig) => Promise<T>,
-): Promise<T> {
+export async function callApiWithAuthRetry<TResponse, TData = never>(
+  execute: (config: ApiRequestConfig<TData>) => Promise<TResponse>,
+): Promise<TResponse> {
   const session = getAuthSession();
   if (!session) {
     throw new Error('No active auth session');
   }
 
-  const initialConfig: ApiRequestConfig = {
+  const initialConfig: ApiRequestConfig<TData> = {
     ...getBrowserApiConfig(),
     headers: getAuthHeaders(session),
   };

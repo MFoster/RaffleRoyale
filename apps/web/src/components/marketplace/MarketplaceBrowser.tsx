@@ -91,23 +91,22 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
   const [sortBy, setSortBy] = useState<MarketplaceSortOption>('ending-soon');
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
   const [onlyWithImages, setOnlyWithImages] = useState(false);
-
+  
   const deferredSearchQuery = useDeferredValue(searchQuery.trim().toLowerCase());
-
+  
   const priceBounds = useMemo(() => {
     if (raffles.length === 0) {
       return [0, 0] as const;
     }
 
-    return raffles.reduce(
+    const bounds = raffles.reduce(
       (bounds, raffle) => [Math.min(bounds[0], raffle.ticketPrice), Math.max(bounds[1], raffle.ticketPrice)] as const,
       [raffles[0].ticketPrice, raffles[0].ticketPrice] as const,
     );
+    setPriceRange([bounds[0], bounds[1]]);
+    return bounds;
   }, [raffles]);
 
-  useEffect(() => {
-    setPriceRange([priceBounds[0], priceBounds[1]]);
-  }, [priceBounds]);
 
   const filteredRaffles = useMemo(() => {
     const nextRaffles = raffles.filter((raffle) => {
