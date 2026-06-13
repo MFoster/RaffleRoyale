@@ -63,8 +63,6 @@ services:
       - web-node-modules:/workspace/node_modules
       - web-next:/workspace/apps/web/.next
 
-<<<<<<< Updated upstream
-=======
   jobs:
     build:
       context: .
@@ -115,7 +113,6 @@ services:
       - scheduler-app-node-modules:/workspace/apps/scheduler/node_modules
       - ./apps/scheduler/data:/app/data
 
->>>>>>> Stashed changes
 volumes:
   postgres-data-dev:
   api-node-modules:
