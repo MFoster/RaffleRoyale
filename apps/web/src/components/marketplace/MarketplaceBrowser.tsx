@@ -103,9 +103,13 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
       (bounds, raffle) => [Math.min(bounds[0], raffle.ticketPrice), Math.max(bounds[1], raffle.ticketPrice)] as const,
       [raffles[0].ticketPrice, raffles[0].ticketPrice] as const,
     );
-    setPriceRange([bounds[0], bounds[1]]);
+    
     return bounds;
   }, [raffles]);
+
+  useEffect(() => {
+    setPriceRange(() => [priceBounds[0], priceBounds[1]]);
+  }, [priceBounds]);
 
 
   const filteredRaffles = useMemo(() => {
