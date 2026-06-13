@@ -13,7 +13,12 @@ import ImagePlaceholder from '@/components/ImagePlaceholder';
 import RaffleDetailsActions from '@/components/RaffleDetailsActions';
 import SiteHeader from '@/components/SiteHeader';
 import { royaleTokens } from '@/design-system';
-import { fetchApiResponse } from '@/lib/api';
+import { raffleFindOne } from '@/generated/clients';
+import {
+  getApiErrorMessage,
+  getApiErrorStatus,
+  getServerApiConfig,
+} from '@/lib/generated-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,33 +144,21 @@ function parseRaffle(payload: unknown): RaffleDetails {
 }
 
 async function fetchRaffle(id: string): Promise<FetchRaffleResult> {
-  const apiResult = await fetchApiResponse(`/raffles/${id}`, { cache: 'no-store' });
-
-  if (!apiResult.ok) {
-    return { kind: 'error', message: apiResult.error };
-  }
-
   try {
-    const { response } = apiResult;
-
-    if (response.status === 404) {
+    const payload = await raffleFindOne(id, getServerApiConfig());
+    const raffle = parseRaffle(payload);
+    return { kind: 'ok', raffle };
+  } catch (error) {
+    if (getApiErrorStatus(error) === 404) {
       return { kind: 'not_found' };
     }
 
-    if (!response.ok) {
-      return {
-        kind: 'error',
-        message: `Raffle API responded with ${response.status}.`,
-      };
-    }
-
-    const payload: unknown = await response.json();
-    const raffle = parseRaffle(payload);
-    return { kind: 'ok', raffle };
-  } catch {
     return {
       kind: 'error',
-      message: 'Could not load raffle details from the API.',
+      message: getApiErrorMessage(
+        error,
+        'Could not load raffle details from the API.',
+      ),
     };
   }
 }
@@ -230,7 +223,7 @@ export default async function RaffleDetailsPage({
       <Container maxWidth="lg" sx={{ pt: { xs: 5, md: 8 }, px: { xs: 2.5, md: 4 } }}>
         <Stack spacing={4}>
           <Button
-            href="/#featured-raffles"
+            href="/marketplace"
             variant="outlined"
             color="inherit"
             sx={{ alignSelf: 'flex-start' }}

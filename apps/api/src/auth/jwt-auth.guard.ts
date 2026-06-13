@@ -17,21 +17,30 @@ export class JwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<{
+      headers: Record<string, string | string[] | undefined>;
+      auth?: AuthContext;
+    }>();
+    const token = this.extractBearerToken(request.headers.authorization);
+
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
     if (isPublic) {
-      return true;
+      if (!token) {
+        return true;
+      }
+
+      try {
+        request.auth = await this.authService.verifyToken(token);
+        return true;
+      } catch {
+        throw new UnauthorizedException('Invalid or expired token');
+      }
     }
 
-    const request = context.switchToHttp().getRequest<{
-      headers: Record<string, string | string[] | undefined>;
-      auth?: AuthContext;
-    }>();
-
-    const token = this.extractBearerToken(request.headers.authorization);
     if (!token) {
       throw new UnauthorizedException('Missing bearer token');
     }

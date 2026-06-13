@@ -1,4 +1,28 @@
 services:
+  elasticmq:
+    image: softwaremill/elasticmq-native:latest
+    ports:
+      - "9324:9324"
+    volumes:
+      - ./apps/jobs/elasticmq.conf:/opt/elasticmq.conf:ro
+    command: ["-Dconfig.file=/opt/elasticmq.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9324/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  elasticmq-ui:
+    image: softwaremill/elasticmq-ui:latest
+    ports:
+      - "9325:3000"
+    environment:
+      SQS_ENDPOINT: http://elasticmq:9324
+    depends_on:
+      elasticmq:
+        condition: service_healthy
+
   db:
     image: postgres:16-alpine
     environment:
@@ -42,6 +66,7 @@ services:
     volumes:
       - .:/workspace
       - api-node-modules:/workspace/node_modules
+      - api-app-node-modules:/workspace/apps/api/node_modules
 
   web:
     build:
@@ -61,10 +86,37 @@ services:
     volumes:
       - .:/workspace
       - web-node-modules:/workspace/node_modules
+      - web-app-node-modules:/workspace/apps/web/node_modules
       - web-next:/workspace/apps/web/.next
+
+  jobs:
+    build:
+      context: .
+      dockerfile: apps/jobs/Dockerfile
+      target: dev
+    entrypoint: ["sh", "-c"]
+    command:
+      - npm run prisma:generate -w jobs; exec node_modules/.bin/tsx apps/jobs/src/index.ts
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
+      JOBS_SQS_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs
+      JOBS_SQS_REPLY_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs-replies
+      JOBS_SQS_ENDPOINT_URL: http://elasticmq:9324
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: x
+      AWS_SECRET_ACCESS_KEY: x
+    depends_on:
+      db:
+        condition: service_healthy
+      elasticmq:
+        condition: service_healthy
+    volumes:
+      - ./apps/jobs/src:/workspace/apps/jobs/src
 
 volumes:
   postgres-data-dev:
   api-node-modules:
+  api-app-node-modules:
   web-node-modules:
+  web-app-node-modules:
   web-next:

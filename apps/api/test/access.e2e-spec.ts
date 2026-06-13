@@ -4,8 +4,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { AuthService } from './../src/auth/auth.service';
-import { RafflesService } from './../src/raffles/raffles.service';
-import { UsersService } from './../src/users/users.service';
+import { RaffleService } from './../src/raffle/raffle.service';
+import { UserService } from './../src/user/user.service';
 
 describe('Access Control (e2e)', () => {
   let app: INestApplication<App>;
@@ -14,7 +14,12 @@ describe('Access Control (e2e)', () => {
     create: jest.fn((dto: unknown) => dto),
     uploadImages: jest.fn(() => ({ imageUrls: [] })),
     findAll: jest.fn(() => []),
-    findOne: jest.fn((id: string) => ({ id })),
+    findOne: jest.fn(
+      (id: string, auth?: { userId: string; role: 'USER' | 'ADMIN' }) => ({
+        id,
+        authUserId: auth?.userId ?? null,
+      }),
+    ),
     purchaseTickets: jest.fn(() => ({ ok: true })),
     resolveWinner: jest.fn(() => ({ ok: true })),
     disbandRaffle: jest.fn(() => ({ ok: true })),
@@ -34,6 +39,26 @@ describe('Access Control (e2e)', () => {
     create: jest.fn((dto: unknown) => dto),
     findAll: jest.fn(() => []),
     findOne: jest.fn((id: string) => ({ id })),
+    findTicketActivity: jest.fn((id: string) => [
+      {
+        transactionId: 'tx-1',
+        amount: 1500,
+        currency: 'usd',
+        status: 'SUCCEEDED',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        quantity: 3,
+        ticketNumbers: [42, 43, 44],
+        raffle: {
+          id: 'raffle-1',
+          title: 'GPU Raffle',
+          status: 'ACTIVE',
+        },
+        requestedBy: id,
+      },
+    ]),
+    findUserRaffles: jest.fn((id: string) => [
+      { id: 'raffle-1', rafflerId: id },
+    ]),
   };
 
   const mockAuthService = {
@@ -104,9 +129,9 @@ describe('Access Control (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(RafflesService)
+      .overrideProvider(RaffleService)
       .useValue(mockRafflesService)
-      .overrideProvider(UsersService)
+      .overrideProvider(UserService)
       .useValue(mockUsersService)
       .overrideProvider(AuthService)
       .useValue(mockAuthService)
@@ -122,12 +147,35 @@ describe('Access Control (e2e)', () => {
   });
 
   it('allows public raffle listing without bearer token', () => {
-    return request(app.getHttpServer()).get('/raffles').expect(200);
+    return request(app.getHttpServer()).get('/raffle').expect(200);
+  });
+
+  it('supports optional auth context on public raffle detail endpoint', async () => {
+    const raffleId = '11111111-1111-1111-1111-111111111111';
+    const userId = '22222222-2222-2222-2222-222222222222';
+    const token = await login(userId);
+
+    const publicResponse = await request(app.getHttpServer())
+      .get(`/raffle/${raffleId}`)
+      .expect(200);
+    expect(publicResponse.body).toEqual({
+      id: raffleId,
+      authUserId: null,
+    });
+
+    const authedResponse = await request(app.getHttpServer())
+      .get(`/raffle/${raffleId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(authedResponse.body).toEqual({
+      id: raffleId,
+      authUserId: userId,
+    });
   });
 
   it('allows public user registration without bearer token', async () => {
     await request(app.getHttpServer())
-      .post('/users')
+      .post('/user')
       .send({
         email: 'new-user@example.com',
         password: 'new-user-password',
@@ -137,7 +185,7 @@ describe('Access Control (e2e)', () => {
 
   it('blocks raffle creation when bearer token is missing', () => {
     return request(app.getHttpServer())
-      .post('/raffles')
+      .post('/raffle')
       .send({
         rafflerId: '11111111-1111-1111-1111-111111111111',
         title: 'Test',
@@ -152,7 +200,7 @@ describe('Access Control (e2e)', () => {
     const token = await login('99999999-9999-9999-9999-999999999999');
 
     return request(app.getHttpServer())
-      .post('/raffles')
+      .post('/raffle')
       .set('Authorization', `Bearer ${token}`)
       .send({
         rafflerId: '11111111-1111-1111-1111-111111111111',
@@ -169,7 +217,7 @@ describe('Access Control (e2e)', () => {
     const token = await login(userId);
 
     return request(app.getHttpServer())
-      .post('/raffles')
+      .post('/raffle')
       .set('Authorization', `Bearer ${token}`)
       .send({
         rafflerId: userId,
@@ -189,12 +237,12 @@ describe('Access Control (e2e)', () => {
     );
 
     await request(app.getHttpServer())
-      .post('/raffles/process-expired')
+      .post('/raffle/process-expired')
       .set('Authorization', `Bearer ${userToken}`)
       .expect(403);
 
     await request(app.getHttpServer())
-      .post('/raffles/process-expired')
+      .post('/raffle/process-expired')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(201);
   });
@@ -203,7 +251,7 @@ describe('Access Control (e2e)', () => {
     const token = await login('11111111-1111-1111-1111-111111111111');
 
     return request(app.getHttpServer())
-      .post('/raffles/11111111-1111-1111-1111-111111111111/purchase')
+      .post('/raffle/11111111-1111-1111-1111-111111111111/purchase')
       .set('Authorization', `Bearer ${token}`)
       .send({
         buyerId: '22222222-2222-2222-2222-222222222222',
@@ -217,12 +265,12 @@ describe('Access Control (e2e)', () => {
     const token = await login(userId);
 
     await request(app.getHttpServer())
-      .get(`/users/${userId}`)
+      .get(`/user/${userId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     await request(app.getHttpServer())
-      .get('/users/22222222-2222-2222-2222-222222222222')
+      .get('/user/22222222-2222-2222-2222-222222222222')
       .set('Authorization', `Bearer ${token}`)
       .expect(403);
   });
@@ -235,14 +283,56 @@ describe('Access Control (e2e)', () => {
     );
 
     await request(app.getHttpServer())
-      .get('/users')
+      .get('/user')
       .set('Authorization', `Bearer ${userToken}`)
       .expect(403);
 
     await request(app.getHttpServer())
-      .get('/users')
+      .get('/user')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
+  });
+
+  it('blocks ticket activity access for a different user', async () => {
+    const token = await login('11111111-1111-1111-1111-111111111111');
+
+    await request(app.getHttpServer())
+      .get('/user/22222222-2222-2222-2222-222222222222/tickets')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it('returns aggregated transaction activity for the owner', async () => {
+    const userId = '11111111-1111-1111-1111-111111111111';
+    const token = await login(userId);
+
+    const response = await request(app.getHttpServer())
+      .get(`/user/${userId}/tickets`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body).toEqual([
+      expect.objectContaining({
+        transactionId: 'tx-1',
+        quantity: 3,
+        ticketNumbers: [42, 43, 44],
+      }),
+    ]);
+  });
+
+  it('allows owner to list own raffles and blocks other users', async () => {
+    const ownerId = '11111111-1111-1111-1111-111111111111';
+    const token = await login(ownerId);
+
+    await request(app.getHttpServer())
+      .get(`/user/${ownerId}/raffle`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/user/22222222-2222-2222-2222-222222222222/raffle')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
   });
 
   it('allows refreshing a valid refresh token', async () => {

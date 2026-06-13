@@ -9,12 +9,13 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AppLink from '@/components/AppLink';
-import { fetchWithAuthRetry } from '@/lib/authenticated-fetch';
+import { raffleCreate, raffleUploadImages } from '@/generated/clients';
 import {
   getAuthUserId,
   hasAuthSession,
   subscribeAuthSession,
 } from '@/lib/auth-session';
+import { callApiWithAuthRetry, getApiErrorMessage } from '@/lib/generated-api';
 
 type ItemType = 'PHYSICAL' | 'DIGITAL';
 type RaffleStatus = 'DRAFT' | 'ACTIVE';
@@ -29,25 +30,6 @@ type UploadRaffleImagesResponse = {
 
 const MAX_RAFFLE_IMAGE_UPLOADS = 3;
 const MAX_RAFFLE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
-
-function parseApiErrorMessage(payload: unknown): string {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return 'Unable to create raffle right now.';
-  }
-
-  const record = payload as Record<string, unknown>;
-  const message = record.message;
-
-  if (typeof message === 'string') {
-    return message;
-  }
-
-  if (Array.isArray(message) && message.every((item) => typeof item === 'string')) {
-    return message.join(' ');
-  }
-
-  return 'Unable to create raffle right now.';
-}
 
 function isUploadRaffleImagesResponse(
   payload: unknown,
@@ -177,16 +159,16 @@ export default function CreateRaffleForm() {
           imageUploadData.append('images', file);
         }
 
-        const imageUploadResponse = await fetchWithAuthRetry('/api/raffles/images', {
-          method: 'POST',
-          body: imageUploadData,
-        });
-        const imageUploadPayload: unknown = await imageUploadResponse.json();
-
-        if (!imageUploadResponse.ok) {
-          setErrorMessage(parseApiErrorMessage(imageUploadPayload));
-          return;
-        }
+        const imageUploadPayload = await callApiWithAuthRetry((config) =>
+          raffleUploadImages({
+            ...config,
+            data: imageUploadData,
+            headers: {
+              ...(config.headers as Record<string, string> | undefined),
+              'Content-Type': 'multipart/form-data',
+            },
+          }),
+        );
 
         if (!isUploadRaffleImagesResponse(imageUploadPayload)) {
           setErrorMessage('Image upload succeeded but response format was invalid.');
@@ -196,31 +178,23 @@ export default function CreateRaffleForm() {
         imageUrls = imageUploadPayload.imageUrls;
       }
 
-      const response = await fetchWithAuthRetry('/api/raffles', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rafflerId: userId,
-          title,
-          description: descriptionRaw.length > 0 ? descriptionRaw : undefined,
-          itemType,
-          totalTickets,
-          ticketPrice,
-          minSellThrough,
-          imageUrls,
-          endTime: endTimeDate.toISOString(),
-          status,
-        }),
-      });
-
-      const payload: unknown = await response.json();
-
-      if (!response.ok) {
-        setErrorMessage(parseApiErrorMessage(payload));
-        return;
-      }
+      const payload = await callApiWithAuthRetry((config) =>
+        raffleCreate(
+          {
+            rafflerId: userId,
+            title,
+            description: descriptionRaw.length > 0 ? descriptionRaw : undefined,
+            itemType,
+            totalTickets,
+            ticketPrice,
+            minSellThrough,
+            imageUrls,
+            endTime: endTimeDate.toISOString(),
+            status,
+          },
+          config,
+        ),
+      );
 
       if (!isCreateRaffleResponse(payload)) {
         setErrorMessage('Raffle created but response format was invalid.');
@@ -229,8 +203,10 @@ export default function CreateRaffleForm() {
 
       router.push(`/raffles/${payload.id}`);
       router.refresh();
-    } catch {
-      setErrorMessage('Network error while creating raffle. Please try again.');
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(error, 'Network error while creating raffle. Please try again.'),
+      );
     } finally {
       setSubmitting(false);
     }
