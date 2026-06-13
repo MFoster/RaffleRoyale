@@ -126,6 +126,56 @@ const VALID_CREATE_STATUSES = new Set<RaffleStatus>([
   RaffleStatus.ACTIVE,
 ]);
 
+<<<<<<< Updated upstream:apps/api/src/raffles/raffles.service.ts
+=======
+const raffleDetailInclude = {
+  raffler: {
+    select: {
+      id: true,
+      email: true,
+    },
+  },
+  events: {
+    orderBy: { createdAt: 'asc' },
+    include: {
+      winnerTicket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          buyer: {
+            select: {
+              id: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.RaffleInclude;
+
+type RaffleDetailBase = Prisma.RaffleGetPayload<{
+  include: typeof raffleDetailInclude;
+}>;
+
+type RaffleDetailEvent = RaffleDetailBase['events'][number];
+type RaffleDetailWinnerTicket = NonNullable<RaffleDetailEvent['winnerTicket']>;
+
+export type RaffleDetail = Omit<RaffleDetailBase, 'events'> & {
+  events: Array<
+    Omit<RaffleDetailEvent, 'winnerTicket'> & {
+      winnerTicket:
+        | (Omit<RaffleDetailWinnerTicket, 'buyer'> & {
+            buyer: Omit<RaffleDetailWinnerTicket['buyer'], 'email'> & {
+              email: string | null;
+            };
+          })
+        | null;
+    }
+  >;
+};
+
+>>>>>>> Stashed changes:apps/api/src/raffle/raffle.service.ts
 mkdirSync(RAFFLE_UPLOADS_DIRECTORY, { recursive: true });
 
 @Injectable()

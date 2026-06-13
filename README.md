@@ -153,6 +153,7 @@ The compose files start:
 
 - `web` on `http://localhost:3100`
 - `api` on `http://localhost:3101`
+- `scheduler` on `http://localhost:3102`
 - `db` on `localhost:5432`
 
 Production image strategy:

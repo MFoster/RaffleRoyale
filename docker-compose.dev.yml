@@ -63,8 +63,63 @@ services:
       - web-node-modules:/workspace/node_modules
       - web-next:/workspace/apps/web/.next
 
+<<<<<<< Updated upstream
+=======
+  jobs:
+    build:
+      context: .
+      dockerfile: apps/jobs/Dockerfile
+      target: dev
+    entrypoint: ["sh", "-c"]
+    command:
+      - npm run prisma:generate -w jobs; exec node_modules/.bin/tsx apps/jobs/src/index.ts
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
+      JOBS_SQS_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs
+      JOBS_SQS_REPLY_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs-replies
+      JOBS_SQS_ENDPOINT_URL: http://elasticmq:9324
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: x
+      AWS_SECRET_ACCESS_KEY: x
+    depends_on:
+      db:
+        condition: service_healthy
+      elasticmq:
+        condition: service_healthy
+    volumes:
+      - ./apps/jobs/src:/workspace/apps/jobs/src
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/scheduler/Dockerfile
+      target: dev
+    environment:
+      SCHEDULER_DB_PATH: /app/data/scheduler.db
+      SCHEDULER_SQS_TARGET_QUEUE_URL: http://elasticmq:9324/queue/raffle-events
+      SCHEDULER_SQS_ENDPOINT_URL: http://elasticmq:9324
+      SCHEDULER_POLL_INTERVAL_MS: 1000
+      SCHEDULER_WORKER_ENABLED: "true"
+      PORT: 3002
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: x
+      AWS_SECRET_ACCESS_KEY: x
+    depends_on:
+      elasticmq:
+        condition: service_healthy
+    ports:
+      - "3102:3002"
+    volumes:
+      - .:/workspace
+      - scheduler-node-modules:/workspace/node_modules
+      - scheduler-app-node-modules:/workspace/apps/scheduler/node_modules
+      - ./apps/scheduler/data:/app/data
+
+>>>>>>> Stashed changes
 volumes:
   postgres-data-dev:
   api-node-modules:
   web-node-modules:
   web-next:
+  scheduler-node-modules:
+  scheduler-app-node-modules:
