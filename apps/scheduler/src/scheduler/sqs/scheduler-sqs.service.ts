@@ -1,5 +1,6 @@
 import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import { Injectable } from '@nestjs/common';
+import { signQueuePayload } from '@raffleroyale/queue-signature';
 import { SchedulerConfigService } from '../config/scheduler-config.service';
 
 @Injectable()
@@ -18,10 +19,12 @@ export class SchedulerSqsService {
   }
 
   async sendMessage(queueUrl: string, payload: Record<string, unknown>): Promise<string> {
+    const signedPayload = signQueuePayload(payload, this.config.queueMessageSigningKey);
+
     const result = await this.client.send(
       new SendMessageCommand({
         QueueUrl: queueUrl,
-        MessageBody: JSON.stringify(payload),
+        MessageBody: JSON.stringify(signedPayload),
       }),
     );
 

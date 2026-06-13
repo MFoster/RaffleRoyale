@@ -8,6 +8,7 @@ Local-only EventBridge Scheduler-compatible service implemented with NestJS.
 - Persist schedules in SQLite
 - Execute due one-time schedules in a worker loop
 - Send payloads to SQS (ElasticMQ) using env-configured queue URL
+- Sign every queue message with `sig` using shared package `@raffleroyale/queue-signature` (SHA-256 hash of canonical JSON payload + shared key)
 - Support `GET /schedules`, `GET /schedules/:name`, and `DELETE /schedules/:name`
 
 ## Commands
@@ -23,6 +24,7 @@ npm run dev:cli -w scheduler -- create-schedule --name raffle-expire-123 --runAt
 ## Environment
 
 - `SCHEDULER_SQS_TARGET_QUEUE_URL` (required)
+- `QUEUE_MESSAGE_SIGNING_KEY` (required, shared across queue producers/consumers)
 - `SCHEDULER_DB_PATH` (default: `/app/data/scheduler.db`)
 - `SCHEDULER_POLL_INTERVAL_MS` (default: `1000`)
 - `SCHEDULER_SQS_ENDPOINT_URL` (default: `http://elasticmq:9324`)

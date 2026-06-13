@@ -18,6 +18,7 @@ export class SchedulerConfigService {
   readonly dbPath = process.env.SCHEDULER_DB_PATH ?? '/app/data/scheduler.db';
   readonly sqsTargetQueueUrl = process.env.SCHEDULER_SQS_TARGET_QUEUE_URL ?? '';
   readonly sqsEndpointUrl = process.env.SCHEDULER_SQS_ENDPOINT_URL ?? 'http://elasticmq:9324';
+  readonly queueMessageSigningKey = process.env.QUEUE_MESSAGE_SIGNING_KEY ?? '';
   readonly pollIntervalMs = parseNumber(process.env.SCHEDULER_POLL_INTERVAL_MS, 1000);
   readonly port = parseNumber(process.env.PORT, 3002);
   readonly workerEnabled = process.env.SCHEDULER_WORKER_ENABLED !== 'false';

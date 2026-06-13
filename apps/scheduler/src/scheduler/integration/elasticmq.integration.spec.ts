@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CreateQueueCommand, ReceiveMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
+import { parseAndVerifyQueueMessage } from '@raffleroyale/queue-signature';
 import { SchedulerConfigService } from '../config/scheduler-config.service';
 import { ScheduleRepository } from '../persistence/schedule.repository';
 import { ScheduleService } from '../schedule.service';
@@ -9,6 +10,7 @@ import { SchedulerSqsService } from '../sqs/scheduler-sqs.service';
 
 const runIntegration = process.env.RUN_SCHEDULER_INTEGRATION === 'true';
 const describeIntegration = runIntegration ? describe : describe.skip;
+const TEST_SIGNING_KEY = 'integration-shared-key';
 
 describeIntegration('ElasticMQ integration', () => {
   let tempDir: string;
@@ -16,6 +18,7 @@ describeIntegration('ElasticMQ integration', () => {
   let scheduleService: ScheduleService;
   let queueUrl: string;
   let sqsClient: SQSClient;
+  let queueSigningKey: string;
 
   beforeAll(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'scheduler-elasticmq-'));
@@ -41,6 +44,7 @@ describeIntegration('ElasticMQ integration', () => {
       queueUrl = createQueueResult.QueueUrl;
     }
 
+    queueSigningKey = process.env.QUEUE_MESSAGE_SIGNING_KEY ?? TEST_SIGNING_KEY;
     const config = {
       dbPath: join(tempDir, 'scheduler.db'),
       sqsTargetQueueUrl: queueUrl,
@@ -48,6 +52,7 @@ describeIntegration('ElasticMQ integration', () => {
       region,
       accessKeyId,
       secretAccessKey,
+      queueMessageSigningKey: queueSigningKey,
     } as SchedulerConfigService;
 
     repository = new ScheduleRepository(config);
@@ -75,8 +80,15 @@ describeIntegration('ElasticMQ integration', () => {
     await scheduleService.processDueSchedules();
 
     const message = await waitForMessage(queueUrl, sqsClient);
-    expect(message?.Body).toContain('"type":"RaffleExpiration"');
-    expect(message?.Body).toContain('"raffleId":"integration-1"');
+    const body = message?.Body ?? '';
+    const verified = parseAndVerifyQueueMessage(body, queueSigningKey);
+    expect(verified).toEqual({ type: 'RaffleExpiration', raffleId: 'integration-1' });
+    expect(() =>
+      parseAndVerifyQueueMessage(
+        JSON.stringify({ type: 'RaffleExpiration', raffleId: 'integration-1' }),
+        queueSigningKey,
+      ),
+    ).toThrow('Queue message missing required sig property');
   });
 });
 
