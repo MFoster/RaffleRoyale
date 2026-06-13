@@ -34,8 +34,9 @@ The scheduler must not accept queue URLs from clients.
 
 All SQS routing is controlled via environment variables:
 
-| SCHEDULER\_SQS\_TARGET\_QUEUE\_URL=http://elasticmq:9324/queue/raffle-eventsSCHEDULER\_DB\_PATH=/app/data/scheduler.dbSCHEDULER\_POLL\_INTERVAL\_MS=1000 |
-| :---- |
+    SCHEDULER_SQS_TARGET_QUEUE_URL=http://elasticmq:9324/queue/raffle-events
+    SCHEDULER_DB_PATH=/app/data/scheduler.db
+    SCHEDULER_POLL_INTERVAL_MS=1000
 
 ---
 
