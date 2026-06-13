@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import SearchRounded from '@mui/icons-material/SearchRounded';
 import TuneRounded from '@mui/icons-material/TuneRounded';
 import ClearRounded from '@mui/icons-material/ClearRounded';
@@ -89,7 +89,7 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
   const [statusFilter, setStatusFilter] = useState<MarketplaceStatusFilter>('all');
   const [itemTypeFilter, setItemTypeFilter] = useState<MarketplaceItemTypeFilter>('all');
   const [sortBy, setSortBy] = useState<MarketplaceSortOption>('ending-soon');
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
+  const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number] | null>(null);
   const [onlyWithImages, setOnlyWithImages] = useState(false);
   
   const deferredSearchQuery = useDeferredValue(searchQuery.trim().toLowerCase());
@@ -107,9 +107,20 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
     return bounds;
   }, [raffles]);
 
-  useEffect(() => {
-    setPriceRange(() => [priceBounds[0], priceBounds[1]]);
-  }, [priceBounds]);
+  const effectivePriceRange = useMemo<[number, number]>(() => {
+    if (selectedPriceRange == null) {
+      return [priceBounds[0], priceBounds[1]];
+    }
+
+    const clampedMin = Math.max(priceBounds[0], Math.min(selectedPriceRange[0], priceBounds[1]));
+    const clampedMax = Math.max(priceBounds[0], Math.min(selectedPriceRange[1], priceBounds[1]));
+
+    if (clampedMin > clampedMax) {
+      return [priceBounds[0], priceBounds[1]];
+    }
+
+    return [clampedMin, clampedMax];
+  }, [priceBounds, selectedPriceRange]);
 
 
   const filteredRaffles = useMemo(() => {
@@ -122,21 +133,21 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
       const matchesSearch = deferredSearchQuery.length === 0 || searchableText.includes(deferredSearchQuery);
       const matchesStatus = statusFilter === 'all' || raffle.status === statusFilter;
       const matchesItemType = itemTypeFilter === 'all' || raffle.itemType === itemTypeFilter;
-      const matchesPrice = raffle.ticketPrice >= priceRange[0] && raffle.ticketPrice <= priceRange[1];
+      const matchesPrice = raffle.ticketPrice >= effectivePriceRange[0] && raffle.ticketPrice <= effectivePriceRange[1];
       const matchesImages = !onlyWithImages || raffle.imageUrls.length > 0;
 
       return matchesSearch && matchesStatus && matchesItemType && matchesPrice && matchesImages;
     });
 
     return sortRaffles(nextRaffles, sortBy);
-  }, [deferredSearchQuery, itemTypeFilter, onlyWithImages, priceRange, raffles, sortBy, statusFilter]);
+  }, [deferredSearchQuery, effectivePriceRange, itemTypeFilter, onlyWithImages, raffles, sortBy, statusFilter]);
 
   const activeFilterCount = [
     deferredSearchQuery.length > 0,
     statusFilter !== 'all',
     itemTypeFilter !== 'all',
     onlyWithImages,
-    priceRange[0] !== priceBounds[0] || priceRange[1] !== priceBounds[1],
+    effectivePriceRange[0] !== priceBounds[0] || effectivePriceRange[1] !== priceBounds[1],
   ].filter(Boolean).length;
 
   const clearFilters = useCallback(() => {
@@ -145,12 +156,12 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
     setItemTypeFilter('all');
     setSortBy('ending-soon');
     setOnlyWithImages(false);
-    setPriceRange([priceBounds[0], priceBounds[1]]);
-  }, [priceBounds]);
+    setSelectedPriceRange(null);
+  }, []);
 
   const handlePriceRangeChange = useCallback((_event: Event, value: number | number[]) => {
     if (Array.isArray(value)) {
-      setPriceRange([value[0], value[1]]);
+      setSelectedPriceRange([value[0], value[1]]);
     }
   }, []);
 
@@ -275,11 +286,11 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
                       Ticket price
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {formatCurrencyFromMinorUnits(priceRange[0])} - {formatCurrencyFromMinorUnits(priceRange[1])}
+                      {formatCurrencyFromMinorUnits(effectivePriceRange[0])} - {formatCurrencyFromMinorUnits(effectivePriceRange[1])}
                     </Typography>
                   </Stack>
                   <Slider
-                    value={priceRange}
+                    value={effectivePriceRange}
                     onChange={handlePriceRangeChange}
                     min={priceBounds[0]}
                     max={priceBounds[1]}
