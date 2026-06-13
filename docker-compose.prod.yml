@@ -60,6 +60,21 @@ services:
       - "3100:3000"
     restart: unless-stopped
 
+  jobs:
+    build:
+      context: .
+      dockerfile: apps/jobs/Dockerfile
+      target: prod
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
+      JOBS_SQS_QUEUE_URL: __JOBS_SQS_QUEUE_URL__
+      JOBS_SQS_REPLY_QUEUE_URL: __JOBS_SQS_REPLY_QUEUE_URL__
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+
 volumes:
   postgres-data-prod:
   api-uploads-prod:

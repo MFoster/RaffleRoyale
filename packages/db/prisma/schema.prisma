@@ -127,9 +127,11 @@ model Ticket {
   raffle      Raffle      @relation(fields: [raffleId], references: [id])
   buyer       User        @relation(fields: [buyerId], references: [id])
   transaction Transaction @relation(fields: [transactionId], references: [id])
+  winnerEvents RaffleEvent[] @relation("WinnerTicketEvents")
 
   @@unique([raffleId, ticketNumber])
   @@index([buyerId])
+  @@index([raffleId])
   @@map("tickets")
 }
 
@@ -147,6 +149,7 @@ model Transaction {
   raffle Raffle   @relation(fields: [raffleId], references: [id])
   tickets Ticket[]
 
+  @@index([userId])
   @@map("transactions")
 }
 
@@ -166,13 +169,17 @@ model Payout {
 }
 
 model RaffleEvent {
-  id        String          @id @default(uuid())
-  raffleId  String          @map("raffle_id")
-  eventType RaffleEventType @map("event_type")
-  metadata  Json?
-  createdAt DateTime        @default(now()) @map("created_at")
+  id             String          @id @default(uuid())
+  raffleId       String          @map("raffle_id")
+  eventType      RaffleEventType @map("event_type")
+  winnerTicketId String?         @map("winner_ticket_id")
+  metadata       Json?
+  createdAt      DateTime        @default(now()) @map("created_at")
 
-  raffle Raffle @relation(fields: [raffleId], references: [id])
+  raffle       Raffle @relation(fields: [raffleId], references: [id])
+  winnerTicket Ticket? @relation("WinnerTicketEvents", fields: [winnerTicketId], references: [id])
 
+  @@index([raffleId])
+  @@index([winnerTicketId])
   @@map("raffle_events")
 }

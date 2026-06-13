@@ -4,8 +4,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { AuthService } from './../src/auth/auth.service';
-import { RafflesService } from './../src/raffles/raffles.service';
-import { UsersService } from './../src/users/users.service';
+import { RaffleService } from './../src/raffle/raffle.service';
+import { UserService } from './../src/user/user.service';
 
 describe('Raffles Flow (e2e)', () => {
   let app: INestApplication<App>;
@@ -121,9 +121,9 @@ describe('Raffles Flow (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(RafflesService)
+      .overrideProvider(RaffleService)
       .useValue(mockRafflesService)
-      .overrideProvider(UsersService)
+      .overrideProvider(UserService)
       .useValue(mockUsersService)
       .overrideProvider(AuthService)
       .useValue(mockAuthService)
@@ -143,7 +143,7 @@ describe('Raffles Flow (e2e)', () => {
     const token = await login(userId);
 
     await request(app.getHttpServer())
-      .post('/raffles')
+      .post('/raffle')
       .set('Authorization', `Bearer ${token}`)
       .send({
         rafflerId: userId,
@@ -155,7 +155,7 @@ describe('Raffles Flow (e2e)', () => {
       .expect(201);
 
     await request(app.getHttpServer())
-      .post('/raffles/11111111-1111-1111-1111-111111111111/purchase')
+      .post('/raffle/11111111-1111-1111-1111-111111111111/purchase')
       .set('Authorization', `Bearer ${token}`)
       .send({
         buyerId: userId,
@@ -175,22 +175,22 @@ describe('Raffles Flow (e2e)', () => {
     );
 
     await request(app.getHttpServer())
-      .post('/raffles/11111111-1111-1111-1111-111111111111/resolve-winner')
+      .post('/raffle/11111111-1111-1111-1111-111111111111/resolve-winner')
       .set('Authorization', `Bearer ${userToken}`)
       .expect(403);
 
     await request(app.getHttpServer())
-      .post('/raffles/11111111-1111-1111-1111-111111111111/resolve-winner')
+      .post('/raffle/11111111-1111-1111-1111-111111111111/resolve-winner')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(201);
 
     await request(app.getHttpServer())
-      .post('/raffles/11111111-1111-1111-1111-111111111111/disband')
+      .post('/raffle/11111111-1111-1111-1111-111111111111/disband')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(201);
 
     await request(app.getHttpServer())
-      .post('/raffles/process-expired')
+      .post('/raffle/process-expired')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(201);
   });

@@ -20,6 +20,15 @@ function printHelp(): void {
 async function main(): Promise<void> {
   loadEnv();
 
+  const sqsQueueUrl = process.env.JOBS_SQS_QUEUE_URL;
+
+  if (sqsQueueUrl) {
+    console.log(`Worker mode: polling SQS queue ${sqsQueueUrl}`);
+    const workerModule = (await import('./sqs/worker.js')) as typeof import('./sqs/worker.js');
+    await workerModule.startWorker(sqsQueueUrl);
+    return;
+  }
+
   const [commandName, ...args] = process.argv.slice(2);
 
   if (!commandName || commandName === '--help' || commandName === '-h' || commandName === 'help') {

@@ -66,6 +66,7 @@ services:
     volumes:
       - .:/workspace
       - api-node-modules:/workspace/node_modules
+      - api-app-node-modules:/workspace/apps/api/node_modules
 
   web:
     build:
@@ -85,6 +86,7 @@ services:
     volumes:
       - .:/workspace
       - web-node-modules:/workspace/node_modules
+      - web-app-node-modules:/workspace/apps/web/node_modules
       - web-next:/workspace/apps/web/.next
 
   jobs:
@@ -142,7 +144,9 @@ services:
 volumes:
   postgres-data-dev:
   api-node-modules:
+  api-app-node-modules:
   web-node-modules:
+  web-app-node-modules:
   web-next:
   scheduler-node-modules:
   scheduler-app-node-modules:

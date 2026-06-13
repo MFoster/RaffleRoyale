@@ -9,6 +9,8 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AppLink from '@/components/AppLink';
+import { authLogin } from '@/generated/clients';
+import { getApiErrorMessage, getBrowserApiConfig } from '@/lib/generated-api';
 import { setAuthSession } from '@/lib/auth-session';
 
 type LoginResponse = {
@@ -35,25 +37,6 @@ function isLoginResponse(payload: unknown): payload is LoginResponse {
   );
 }
 
-function parseApiErrorMessage(payload: unknown): string {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return 'Unable to sign in right now.';
-  }
-
-  const record = payload as Record<string, unknown>;
-  const message = record.message;
-
-  if (typeof message === 'string') {
-    return message;
-  }
-
-  if (Array.isArray(message) && message.every((item) => typeof item === 'string')) {
-    return message.join(' ');
-  }
-
-  return 'Unable to sign in right now.';
-}
-
 export default function LoginForm() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -76,23 +59,13 @@ export default function LoginForm() {
     setSubmitting(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const payload = await authLogin(
+        {
           email,
           password,
-        }),
-      });
-
-      const payload: unknown = await response.json();
-
-      if (!response.ok) {
-        setErrorMessage(parseApiErrorMessage(payload));
-        return;
-      }
+        },
+        getBrowserApiConfig(),
+      );
 
       if (!isLoginResponse(payload)) {
         setErrorMessage('Login succeeded but response format was invalid.');
@@ -102,8 +75,10 @@ export default function LoginForm() {
       setAuthSession(payload, keepSignedIn);
       router.push('/');
       router.refresh();
-    } catch {
-      setErrorMessage('Network error while signing in. Please try again.');
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(error, 'Network error while signing in. Please try again.'),
+      );
     } finally {
       setSubmitting(false);
     }

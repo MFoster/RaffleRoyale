@@ -14,11 +14,13 @@
     "seed": "tsx src/index.ts seed"
   },
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3",
     "@raffleroyale/db": "0.1.0",
     "@prisma/client": "^6.16.2",
     "bcryptjs": "^3.0.3",
     "dotenv": "^16.6.1",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "prisma": "^6.16.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
@@ -26,7 +28,6 @@
     "@types/node": "^24.0.0",
     "eslint": "^9.18.0",
     "globals": "^17.0.0",
-    "prisma": "^6.16.2",
     "tsx": "^4.20.5",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"

@@ -55,11 +55,11 @@ export default function SiteHeader() {
         >
           {isAuthenticated ? (
             <>
+              <Button href="/marketplace" color="inherit" size="large">
+                Marketplace
+              </Button>
               <Button href="/raffles/create" variant="contained" size="large">
                 Create raffle
-              </Button>
-              <Button href="/#featured-raffles" color="inherit" size="large">
-                Browse raffles
               </Button>
               <Button variant="outlined" color="inherit" size="large" onClick={handleSignOut}>
                 Sign out
@@ -67,6 +67,9 @@ export default function SiteHeader() {
             </>
           ) : (
             <>
+              <Button href="/marketplace" color="inherit" size="large">
+                Marketplace
+              </Button>
               <Button href="/login" color="inherit" size="large">
                 Log in
               </Button>

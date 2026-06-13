@@ -55,6 +55,7 @@ jobs:
         service:
           - api
           - web
+          - jobs
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX || 'raffle-royale' }}
@@ -79,6 +80,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Validate web proxy target
+        if: matrix.service == 'web'
         run: |
           if [ -z "${WEB_API_PROXY_TARGET}" ]; then
             echo "WEB_API_PROXY_TARGET variable is required for production image build."
@@ -124,9 +126,113 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:main
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.run_number }}
 
-  deploy-ecs:
-    name: Deploy API and web to ECS Fargate
+      - name: Build and push jobs image
+        if: matrix.service == 'jobs'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/jobs/Dockerfile
+          target: prod
+          push: true
+          cache-from: type=gha,scope=jobs
+          cache-to: type=gha,mode=max,scope=jobs
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:main
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:${{ github.run_number }}
+
+  run-migrations:
+    name: Run database migrations via SQS
     needs: publish-ecr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      JOBS_QUEUE_NAME: ${{ vars.JOBS_QUEUE_NAME || 'raffle-royale-jobs' }}
+      JOBS_REPLY_QUEUE_NAME: ${{ vars.JOBS_REPLY_QUEUE_NAME || 'raffle-royale-jobs-replies' }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Send migrate message and wait for reply
+        run: |
+          # Get queue URLs
+          JOBS_QUEUE_URL=$(aws sqs get-queue-url --queue-name "$JOBS_QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
+          REPLY_QUEUE_URL=$(aws sqs get-queue-url --queue-name "$JOBS_REPLY_QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
+
+          # Generate correlationId
+          CORRELATION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+
+          # Send message
+          aws sqs send-message \
+            --queue-url "$JOBS_QUEUE_URL" \
+            --message-body "{\"id\":\"${CORRELATION_ID}\",\"command\":\"migrate\",\"args\":[],\"replyQueueUrl\":\"${REPLY_QUEUE_URL}\"}" \
+            --region "$AWS_REGION"
+
+          echo "Sent migrate message with id=${CORRELATION_ID}"
+          echo "Waiting for reply (max 10 minutes)..."
+
+          # Poll for reply
+          TIMEOUT=600
+          START=$(date +%s)
+          while true; do
+            NOW=$(date +%s)
+            ELAPSED=$((NOW - START))
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "Timed out waiting for migration reply after ${TIMEOUT}s."
+              exit 1
+            fi
+
+            MSG=$(aws sqs receive-message \
+              --queue-url "$REPLY_QUEUE_URL" \
+              --max-number-of-messages 10 \
+              --wait-time-seconds 20 \
+              --region "$AWS_REGION" \
+              --output json 2>/dev/null || echo '{}')
+
+            MESSAGES=$(echo "$MSG" | jq -r '.Messages // [] | length')
+            if [ "$MESSAGES" -gt 0 ]; then
+              for i in $(seq 0 $((MESSAGES - 1))); do
+                BODY=$(echo "$MSG" | jq -r ".Messages[$i].Body")
+                RECEIPT=$(echo "$MSG" | jq -r ".Messages[$i].ReceiptHandle")
+                MSG_ID=$(echo "$BODY" | jq -r '.id // ""')
+
+                if [ "$MSG_ID" = "$CORRELATION_ID" ]; then
+                  # Delete the reply message
+                  aws sqs delete-message --queue-url "$REPLY_QUEUE_URL" --receipt-handle "$RECEIPT" --region "$AWS_REGION"
+
+                  SUCCESS=$(echo "$BODY" | jq -r '.success')
+                  ERROR=$(echo "$BODY" | jq -r '.error // ""')
+
+                  if [ "$SUCCESS" = "true" ]; then
+                    echo "Migrations applied successfully."
+                    exit 0
+                  else
+                    echo "Migration failed: $ERROR"
+                    exit 1
+                  fi
+                else
+                  # Not our message — return it to the queue immediately
+                  aws sqs change-message-visibility \
+                    --queue-url "$REPLY_QUEUE_URL" \
+                    --receipt-handle "$RECEIPT" \
+                    --visibility-timeout 0 \
+                    --region "$AWS_REGION"
+                fi
+              done
+            fi
+            sleep 2
+          done
+
+  deploy-ecs:
+    name: Deploy API, web, and jobs to ECS Fargate
+    needs: run-migrations
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -137,11 +243,14 @@ jobs:
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'raffle-royale' }}
       ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE || 'raffle-royale-api' }}
       ECS_WEB_SERVICE: ${{ vars.ECS_WEB_SERVICE || 'raffle-royale-web' }}
+      ECS_JOBS_SERVICE: ${{ vars.ECS_JOBS_SERVICE || 'raffle-royale-jobs' }}
       ECS_FRONTEND_URL: ${{ vars.ECS_FRONTEND_URL || '' }}
       WEB_API_PROXY_TARGET: ${{ vars.WEB_API_PROXY_TARGET || '' }}
       ECS_API_UPLOADS_EFS_FILESYSTEM_ID: ${{ vars.ECS_API_UPLOADS_EFS_FILESYSTEM_ID || '' }}
       ECS_API_UPLOADS_EFS_ACCESS_POINT_ID: ${{ vars.ECS_API_UPLOADS_EFS_ACCESS_POINT_ID || '' }}
       ENFORCE_HTTPS: ${{ vars.ENFORCE_HTTPS || 'false' }}
+      JOBS_SQS_QUEUE_URL: ${{ vars.JOBS_SQS_QUEUE_URL || '' }}
+      JOBS_SQS_REPLY_QUEUE_URL: ${{ vars.JOBS_SQS_REPLY_QUEUE_URL || '' }}
 
     steps:
       - name: Checkout
@@ -156,20 +265,6 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies for migrations
-        run: npm ci
-
-      - name: Apply Prisma migrations
-        env:
-          DATABASE_URL: ${{ secrets.ECS_API_DATABASE_URL }}
-        run: npm run prisma:migrate:deploy -w @raffleroyale/db
 
       - name: Validate deploy secrets
         env:
@@ -229,6 +324,7 @@ jobs:
 
           API_TASK_DEF="$RUNNER_TEMP/task-definition-api.json"
           WEB_TASK_DEF="$RUNNER_TEMP/task-definition-web.json"
+          JOBS_TASK_DEF="$RUNNER_TEMP/task-definition-jobs.json"
 
           sed \
             -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
@@ -244,8 +340,16 @@ jobs:
             -e "s|__WEB_API_PROXY_TARGET__|${WEB_API_PROXY_TARGET}|g" \
             .aws/ecs/task-definition-web.json > "$WEB_TASK_DEF"
 
+          sed \
+            -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
+            -e "s/__AWS_REGION__/${AWS_REGION}/g" \
+            -e "s|__JOBS_SQS_QUEUE_URL__|${JOBS_SQS_QUEUE_URL}|g" \
+            -e "s|__JOBS_SQS_REPLY_QUEUE_URL__|${JOBS_SQS_REPLY_QUEUE_URL}|g" \
+            .aws/ecs/task-definition-jobs.json > "$JOBS_TASK_DEF"
+
           echo "api=${API_TASK_DEF}" >> "$GITHUB_OUTPUT"
           echo "web=${WEB_TASK_DEF}" >> "$GITHUB_OUTPUT"
+          echo "jobs=${JOBS_TASK_DEF}" >> "$GITHUB_OUTPUT"
 
       - name: Render API task definition
         id: render-api
@@ -280,5 +384,23 @@ jobs:
         with:
           task-definition: ${{ steps.render-web.outputs.task-definition }}
           service: ${{ env.ECS_WEB_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Render jobs task definition
+        id: render-jobs
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ steps.taskdef.outputs.jobs }}
+          container-name: jobs
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:${{ github.sha }}
+          environment-variables: |
+            DATABASE_URL=${{ secrets.ECS_API_DATABASE_URL }}
+
+      - name: Deploy jobs service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-jobs.outputs.task-definition }}
+          service: ${{ env.ECS_JOBS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
