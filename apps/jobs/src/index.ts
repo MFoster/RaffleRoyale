@@ -23,6 +23,11 @@ async function main(): Promise<void> {
   const sqsQueueUrl = process.env.JOBS_SQS_QUEUE_URL;
 
   if (sqsQueueUrl) {
+    if (!process.env.QUEUE_MESSAGE_SIGNING_KEY) {
+      throw new Error(
+        'QUEUE_MESSAGE_SIGNING_KEY is required when JOBS_SQS_QUEUE_URL is configured.',
+      );
+    }
     console.log(`Worker mode: polling SQS queue ${sqsQueueUrl}`);
     const workerModule = (await import('./sqs/worker.js')) as typeof import('./sqs/worker.js');
     await workerModule.startWorker(sqsQueueUrl);

@@ -45,6 +45,7 @@ The worker also uses these environment variables:
 - `JOBS_SQS_QUEUE_URL`: queue to poll for job messages.
 - `JOBS_SQS_REPLY_QUEUE_URL`: default reply queue, used when a message does not specify one.
 - `JOBS_SQS_ENDPOINT_URL`: optional custom SQS endpoint such as ElasticMQ.
+- `QUEUE_MESSAGE_SIGNING_KEY`: shared symmetric key used to verify incoming message `sig` and sign replies.
 - `AWS_REGION`: AWS region for the SQS client.
 - `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: required for local SQS-compatible endpoints like ElasticMQ.
 - `DATABASE_URL`: required for commands that use Prisma.
@@ -58,7 +59,8 @@ Send a JSON object to the queue with this shape:
   "id": "job-123",
   "command": "db:health",
   "args": [],
-  "replyQueueUrl": "http://elasticmq:9324/000000000000/raffle-royale-jobs-replies"
+  "replyQueueUrl": "http://elasticmq:9324/000000000000/raffle-royale-jobs-replies",
+  "sig": "<sha256-signature>"
 }
 ```
 
@@ -68,6 +70,7 @@ Fields:
 - `command` is required and must match one of the commands listed above.
 - `args` is optional and must be an array of strings when provided.
 - `replyQueueUrl` is optional and must be a string when provided.
+- `sig` is required and must be generated with `@raffleroyale/queue-signature`.
 
 ### Example messages
 
@@ -92,7 +95,7 @@ Run the seed command with a custom fixture file:
 
 ## Replies
 
-When a reply queue is configured, the worker sends a reply message after the command finishes.
+When a reply queue is configured, the worker sends a signed reply message after the command finishes.
 
 Reply payload shape:
 
@@ -110,7 +113,7 @@ On failure, `success` is `false`, `exitCode` is `1`, and `error` contains the fa
 
 ## Invalid messages
 
-Messages that fail validation are treated as invalid, logged, and deleted from the queue so they do not loop forever.
+Messages that fail validation or signature verification are treated as invalid, logged, and deleted from the queue so they do not loop forever.
 
 ## Seed fixture
 
