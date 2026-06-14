@@ -6,6 +6,10 @@ import {
   type Message,
   type SQSClient,
 } from '@aws-sdk/client-sqs';
+import {
+  parseAndVerifyQueueMessage,
+  signQueuePayload,
+} from '@raffleroyale/queue-signature';
 import type { PrismaClient } from '@prisma/client';
 import { commandMap } from '../commands';
 import { createPrismaClient } from '../prisma/client';
@@ -17,10 +21,6 @@ class InvalidJobMessageError extends Error {
     super(message);
     this.name = 'InvalidJobMessageError';
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -35,16 +35,12 @@ function isInvalidJobMessageError(error: unknown): error is InvalidJobMessageErr
   return error instanceof InvalidJobMessageError;
 }
 
-function parseJobMessage(body: string): JobMessage {
-  let parsed: unknown;
+function parseJobMessage(body: string, signingKey: string): JobMessage {
+  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(body);
-  } catch {
-    throw new InvalidJobMessageError('Job message body must be valid JSON.');
-  }
-
-  if (!isRecord(parsed)) {
-    throw new InvalidJobMessageError('Job message body must be a JSON object.');
+    parsed = parseAndVerifyQueueMessage(body, signingKey);
+  } catch (error) {
+    throw new InvalidJobMessageError(getErrorMessage(error));
   }
 
   const { id, command, args, replyQueueUrl } = parsed;
@@ -80,17 +76,13 @@ function parseJobMessage(body: string): JobMessage {
   };
 }
 
-function extractReplyContext(body: string | undefined): Partial<JobMessage> {
+function extractReplyContext(body: string | undefined, signingKey: string): Partial<JobMessage> {
   if (!body) {
     return {};
   }
 
   try {
-    const parsed: unknown = JSON.parse(body);
-
-    if (!isRecord(parsed)) {
-      return {};
-    }
+    const parsed = parseAndVerifyQueueMessage(body, signingKey);
 
     return {
       ...(typeof parsed.id === 'string' ? { id: parsed.id } : {}),
@@ -151,15 +143,18 @@ async function sendReply(
   sqsClient: SQSClient,
   queueUrl: string,
   reply: JobReply,
+  signingKey: string,
 ): Promise<void> {
   console.log(
     `Sending ${reply.success ? 'success' : 'failure'} reply for job ${reply.id} to ${queueUrl}`,
   );
 
+  const signedReply = signQueuePayload(reply, signingKey);
+
   await sqsClient.send(
     new SendMessageCommand({
       QueueUrl: queueUrl,
-      MessageBody: JSON.stringify(reply),
+      MessageBody: JSON.stringify(signedReply),
     }),
   );
 }
@@ -168,6 +163,7 @@ async function sendFailureReplyIfConfigured(
   sqsClient: SQSClient,
   jobMessage: Partial<JobMessage>,
   error: string,
+  signingKey: string,
 ): Promise<void> {
   const replyQueueUrl = getReplyQueueUrl(jobMessage);
 
@@ -184,6 +180,7 @@ async function sendFailureReplyIfConfigured(
         exitCode: 1,
         error,
       }),
+      signingKey,
     );
   } catch (replyError) {
     console.error(
@@ -217,16 +214,17 @@ async function processMessage(
   queueUrl: string,
   message: Message,
   prisma: PrismaClient,
+  signingKey: string,
 ): Promise<void> {
   let jobMessage: JobMessage | undefined;
-  const replyContext = extractReplyContext(message.Body);
+  const replyContext = extractReplyContext(message.Body, signingKey);
 
   try {
     if (!message.Body) {
       throw new InvalidJobMessageError('Received SQS message without a body.');
     }
 
-    jobMessage = parseJobMessage(message.Body);
+    jobMessage = parseJobMessage(message.Body, signingKey);
 
     console.log(
       `Received SQS message ${message.MessageId ?? jobMessage.id} for command ${jobMessage.command}.`,
@@ -269,6 +267,7 @@ async function processMessage(
         sqsClient,
         replyQueueUrl,
         buildReply(jobMessage, { success: true, exitCode: 0 }),
+        signingKey,
       );
     } catch (replyError) {
       console.error(
@@ -296,11 +295,16 @@ async function processMessage(
       }
     }
 
-    await sendFailureReplyIfConfigured(sqsClient, failedJob, errorMessage);
+    await sendFailureReplyIfConfigured(sqsClient, failedJob, errorMessage, signingKey);
   }
 }
 
 export async function startWorker(queueUrl: string): Promise<void> {
+  const signingKey = process.env.QUEUE_MESSAGE_SIGNING_KEY;
+  if (!signingKey) {
+    throw new Error('QUEUE_MESSAGE_SIGNING_KEY is required for SQS worker mode.');
+  }
+
   const sqsClient = createSqsClient();
   const prisma = createWorkerPrismaClient();
   let shutdownRequested = false;
@@ -343,7 +347,7 @@ export async function startWorker(queueUrl: string): Promise<void> {
         }
 
         processingMessage = true;
-        await processMessage(sqsClient, queueUrl, message, prisma);
+        await processMessage(sqsClient, queueUrl, message, prisma, signingKey);
       } catch (error) {
         if (shutdownRequested && isAbortError(error)) {
           break;
