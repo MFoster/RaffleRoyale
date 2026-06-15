@@ -4,8 +4,7 @@ test('signup flow shows onboarding and routes to create raffle', async ({ page }
   await page.goto('/login');
 
   await page.goto('/register');
-  await page.waitForTimeout(3000);
-
+  await expect(page.getByLabel('Email address')).toBeVisible();
   const email = `playwright-${Date.now()}@example.com`;
   const password = 'P@ssw0rd123!';
 
