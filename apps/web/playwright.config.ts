@@ -7,7 +7,7 @@ const useExternalWebServer = process.env.PLAYWRIGHT_EXTERNAL_WEBSERVER === 'true
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
-  reporter: 'list',
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   retries: process.env.CI ? 2 : 0,
   use: {
     baseURL,
