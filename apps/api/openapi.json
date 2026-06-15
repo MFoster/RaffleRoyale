@@ -15,6 +15,20 @@
         ]
       }
     },
+    "/health": {
+      "get": {
+        "operationId": "AppGetHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
     "/user": {
       "post": {
         "operationId": "UserCreate",

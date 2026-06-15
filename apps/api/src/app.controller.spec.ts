@@ -19,5 +19,11 @@ describe('AppController', () => {
         status: 'ok',
       });
     });
+
+    it('should return health payload', () => {
+      expect(appController.getHealth()).toEqual({
+        status: 'ok',
+      });
+    });
   });
 });
