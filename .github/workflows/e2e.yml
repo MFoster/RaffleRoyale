@@ -1,0 +1,176 @@
+name: E2E (compose)
+
+on:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Choose which e2e profile to run
+        required: false
+        type: choice
+        options:
+          - fast
+          - full
+          - both
+        default: fast
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-compose-pr:
+    name: Web e2e via compose
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (inputs.profile == 'fast' || inputs.profile == 'both')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: true
+      API_PROXY_TARGET: http://localhost:3101
+      DOCKER_BUILDKIT: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Start API dependencies with compose
+        run: docker compose -f docker-compose.dev.yml up -d --build db api
+
+      - name: Wait for API health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:3101/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy in time"
+          exit 1
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run web e2e tests
+        run: npm run test:e2e -w web
+
+      - name: Capture compose logs on failure
+        if: failure()
+        run: |
+          mkdir -p artifacts
+          docker compose -f docker-compose.dev.yml ps > artifacts/compose-ps.txt
+          docker compose -f docker-compose.dev.yml logs --no-color db api > artifacts/compose.log
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+
+      - name: Upload compose diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-diagnostics
+          path: artifacts
+
+      - name: Tear down compose stack
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down -v
+
+  e2e-compose-full:
+    name: Web e2e via full compose profile
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.profile == 'full' || inputs.profile == 'both')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: true
+      DOCKER_BUILDKIT: 1
+      PLAYWRIGHT_BASE_URL: http://localhost:3100
+      PLAYWRIGHT_EXTERNAL_WEBSERVER: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Start full compose profile
+        run: docker compose -f docker-compose.dev.yml up -d --build db api web elasticmq jobs scheduler
+
+      - name: Wait for stack readiness
+        run: |
+          for i in {1..90}; do
+            if curl -fsS http://localhost:3101/health > /dev/null \
+              && curl -fsS http://localhost:3100 > /dev/null \
+              && curl -fsS http://localhost:9324/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Full compose stack did not become ready in time"
+          exit 1
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run web e2e tests
+        run: npm run test:e2e -w web
+
+      - name: Capture compose logs on failure
+        if: failure()
+        run: |
+          mkdir -p artifacts
+          docker compose -f docker-compose.dev.yml ps > artifacts/compose-ps.txt
+          docker compose -f docker-compose.dev.yml logs --no-color > artifacts/compose.log
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-full
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+
+      - name: Upload compose diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-diagnostics-full
+          path: artifacts
+
+      - name: Tear down compose stack
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down -v
