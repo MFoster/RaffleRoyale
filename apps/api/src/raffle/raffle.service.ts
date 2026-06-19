@@ -343,7 +343,7 @@ export class RaffleService {
     });
   }
 
-  async findOne(id: string, auth?: AuthContext): Promise<RaffleDetail> {
+  async findOne(id: string, _auth?: AuthContext): Promise<RaffleDetail> {
     const raffle = await this.prisma.raffle.findUnique({
       where: { id },
       include: raffleDetailInclude,
@@ -352,35 +352,6 @@ export class RaffleService {
     if (!raffle) {
       throw new NotFoundException(`Raffle ${id} not found`);
     }
-
-    const canViewWinnerEmail =
-      auth?.role === 'ADMIN' || auth?.userId === raffle.rafflerId;
-
-    if (!canViewWinnerEmail) {
-      return {
-        ...raffle,
-        events: raffle.events.map((event) => {
-          if (
-            event.eventType !== 'WINNER_SELECTED' ||
-            !event.winnerTicket?.buyer
-          ) {
-            return event;
-          }
-
-          return {
-            ...event,
-            winnerTicket: {
-              ...event.winnerTicket,
-              buyer: {
-                ...event.winnerTicket.buyer,
-                email: null,
-              },
-            },
-          };
-        }),
-      };
-    }
-
     return raffle;
   }
 
@@ -533,14 +504,47 @@ export class RaffleService {
           throw new NotFoundException(`Raffle ${raffleId} not found`);
         }
 
+        const existingWinnerEvent = await tx.raffleEvent.findFirst({
+          where: {
+            raffleId,
+            eventType: 'WINNER_SELECTED',
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (existingWinnerEvent) {
+          throw new ConflictException('Winner has already been resolved');
+        }
+
         if (raffle.status === RaffleStatus.COMPLETED) {
           throw new ConflictException('Winner has already been resolved');
         }
 
-        if (raffle.status !== RaffleStatus.SOLD_OUT) {
+        const isSoldOut = raffle.status === RaffleStatus.SOLD_OUT;
+        const isExpired = raffle.status === RaffleStatus.EXPIRED;
+
+        if (!isSoldOut && !isExpired) {
           throw new ConflictException(
-            'Only SOLD_OUT raffles can resolve a winner',
+            'Only SOLD_OUT or eligible EXPIRED raffles can resolve a winner',
           );
+        }
+
+        if (isExpired) {
+          const sellThroughPercent =
+            raffle.totalTickets === 0
+              ? 0
+              : (raffle.ticketsSold / raffle.totalTickets) * 100;
+          const meetsMinSellThrough =
+            raffle.minSellThrough !== null &&
+            sellThroughPercent >= raffle.minSellThrough;
+
+          if (!meetsMinSellThrough) {
+            throw new ConflictException(
+              'Expired raffle did not meet minimum sell-through',
+            );
+          }
         }
 
         const ticketCount = await tx.ticket.count({ where: { raffleId } });

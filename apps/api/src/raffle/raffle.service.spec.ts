@@ -38,6 +38,7 @@ describe('RaffleService', () => {
     },
     raffleEvent: {
       create: jest.fn(),
+      findFirst: jest.fn(),
     },
     pendingRaffleImageUpload: {
       findMany: jest.fn(),
@@ -139,6 +140,7 @@ describe('RaffleService', () => {
       updatedAt: new Date(),
     });
     mockTx.raffleEvent.create.mockResolvedValue(undefined);
+    mockTx.raffleEvent.findFirst.mockResolvedValue(null);
     mockTx.pendingRaffleImageUpload.findMany.mockResolvedValue([]);
     mockTx.pendingRaffleImageUpload.updateMany.mockResolvedValue({ count: 0 });
     mockPrisma.raffle.findMany.mockResolvedValue([]);
@@ -329,10 +331,12 @@ describe('RaffleService', () => {
     });
   });
 
-  it('redacts winner email for public raffle detail requests', async () => {
+  it('shows winner email for public raffle detail requests', async () => {
     const result = await service.findOne(raffleId);
 
-    expect(result.events[0]?.winnerTicket?.buyer?.email).toBeNull();
+    expect(result.events[0]?.winnerTicket?.buyer?.email).toBe(
+      'winner@example.com',
+    );
     expect(result.raffler.email).toBe('raffler@example.com');
   });
 
@@ -426,6 +430,45 @@ describe('RaffleService', () => {
       winnerTicketNumber: 1,
       ticketCount: 1,
       randomIndex: 0,
+      raffleStatus: RaffleStatus.COMPLETED,
+    });
+  });
+
+  it('resolves a winner for an EXPIRED raffle that met threshold', async () => {
+    mockTx.raffle.findUnique.mockResolvedValue({
+      id: raffleId,
+      rafflerId: '33333333-3333-3333-3333-333333333333',
+      title: 'Threshold-met expired raffle',
+      description: null,
+      itemType: ItemType.PHYSICAL,
+      totalTickets: 10,
+      ticketPrice: 500,
+      ticketsSold: 8,
+      minSellThrough: 75,
+      status: RaffleStatus.EXPIRED,
+      startTime: new Date(),
+      endTime: new Date(Date.now() - 3600000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockTx.ticket.count.mockResolvedValue(8);
+    mockTx.ticket.findFirst.mockResolvedValue({
+      id: 'ticket-5',
+      ticketNumber: 5,
+    });
+
+    const result = await service.resolveWinner(raffleId);
+
+    expect(mockTx.raffle.update).toHaveBeenCalledWith({
+      where: { id: raffleId },
+      data: { status: RaffleStatus.COMPLETED },
+    });
+    expect(result).toEqual({
+      raffleId,
+      winnerTicketId: 'ticket-5',
+      winnerTicketNumber: 5,
+      ticketCount: 8,
+      randomIndex: expect.any(Number),
       raffleStatus: RaffleStatus.COMPLETED,
     });
   });

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { SchedulerConfigService } from '../config/scheduler-config.service';
 import { ScheduleService } from '../schedule.service';
@@ -11,9 +11,9 @@ export class SchedulerWorkerService implements OnModuleInit, OnModuleDestroy {
   private tickInFlight = false;
 
   constructor(
-    private readonly config: SchedulerConfigService,
-    private readonly schedulerRegistry: SchedulerRegistry,
-    private readonly scheduleService: ScheduleService,
+    @Inject(SchedulerConfigService) private readonly config: SchedulerConfigService,
+    @Inject(SchedulerRegistry) private readonly schedulerRegistry: SchedulerRegistry,
+    @Inject(ScheduleService) private readonly scheduleService: ScheduleService,
   ) {}
 
   onModuleInit(): void {

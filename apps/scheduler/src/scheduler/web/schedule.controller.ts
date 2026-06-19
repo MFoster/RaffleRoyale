@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
 import type { Schedule } from '../types/schedule.types';
 import { ScheduleService } from '../schedule.service';
 
 @Controller('schedules')
 export class ScheduleController {
-  constructor(private readonly scheduleService: ScheduleService) {}
+  constructor(@Inject(ScheduleService) private readonly scheduleService: ScheduleService) {}
 
   @Post()
   async createSchedule(@Body() body: unknown): Promise<Schedule> {

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { autoDetectAndParseRequest } from './parsing/schedule-parser';
 import { ScheduleRepository } from './persistence/schedule.repository';
@@ -11,9 +11,9 @@ export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name);
 
   constructor(
-    private readonly config: SchedulerConfigService,
-    private readonly repository: ScheduleRepository,
-    private readonly sqs: SchedulerSqsService,
+    @Inject(SchedulerConfigService) private readonly config: SchedulerConfigService,
+    @Inject(ScheduleRepository) private readonly repository: ScheduleRepository,
+    @Inject(SchedulerSqsService) private readonly sqs: SchedulerSqsService,
   ) {}
 
   async createSchedule(body: unknown): Promise<Schedule> {
@@ -72,6 +72,7 @@ export class ScheduleService {
   }
 
   async executeSchedule(name: string): Promise<void> {
+    this.logger.log(`Attempting to execute schedule: ${name}`);
     const schedule = await this.repository.findByName(name);
     if (!schedule) {
       return;

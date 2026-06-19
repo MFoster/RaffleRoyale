@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
+import WorkspacePremiumRounded from '@mui/icons-material/WorkspacePremiumRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -32,6 +33,12 @@ type RaffleStatus =
 
 type RaffleItemType = 'PHYSICAL' | 'DIGITAL';
 
+type WinnerEventDetails = {
+  id: string;
+  winnerTicketNumber: number;
+  winnerEmail: string | null;
+};
+
 type RaffleDetails = {
   id: string;
   title: string;
@@ -46,6 +53,7 @@ type RaffleDetails = {
   startTime: string;
   endTime: string;
   createdAt: string;
+  winnerEvent: WinnerEventDetails | null;
 };
 
 type FetchRaffleResult =
@@ -121,6 +129,66 @@ function parseRaffle(payload: unknown): RaffleDetails {
     throw new Error('Raffle response has an unexpected shape.');
   }
 
+  const winnerEvent = (() => {
+    const events = record.events;
+
+    if (!Array.isArray(events)) {
+      return null;
+    }
+
+    for (const event of events) {
+      if (typeof event !== 'object' || event === null || Array.isArray(event)) {
+        continue;
+      }
+
+      const eventRecord = event as Record<string, unknown>;
+
+      if (
+        eventRecord.eventType !== 'WINNER_SELECTED' ||
+        typeof eventRecord.id !== 'string'
+      ) {
+        continue;
+      }
+
+      const winnerTicket = eventRecord.winnerTicket;
+
+      if (
+        typeof winnerTicket !== 'object' ||
+        winnerTicket === null ||
+        Array.isArray(winnerTicket)
+      ) {
+        continue;
+      }
+
+      const winnerTicketRecord = winnerTicket as Record<string, unknown>;
+      if (typeof winnerTicketRecord.ticketNumber !== 'number') {
+        continue;
+      }
+
+      const buyer = winnerTicketRecord.buyer;
+      let winnerEmail: string | null = null;
+
+      if (
+        typeof buyer === 'object' &&
+        buyer !== null &&
+        !Array.isArray(buyer)
+      ) {
+        const buyerRecord = buyer as Record<string, unknown>;
+        if (typeof buyerRecord.email === 'string') {
+          winnerEmail = buyerRecord.email;
+        }
+      }
+
+      return {
+        id: eventRecord.id,
+        winnerTicketNumber: winnerTicketRecord.ticketNumber,
+        winnerEmail,
+      };
+    }
+
+    return null;
+  })();
+
   return {
     id: record.id,
     title: record.title,
@@ -140,6 +208,7 @@ function parseRaffle(payload: unknown): RaffleDetails {
     startTime: record.startTime,
     endTime: record.endTime,
     createdAt: record.createdAt,
+    winnerEvent,
   };
 }
 
@@ -240,6 +309,14 @@ export default async function RaffleDetailsPage({
               <Typography color="text.secondary">{result.message}</Typography>
             </Paper>
           ) : (
+            (() => {
+              const winnerEvent = result.raffle.winnerEvent;
+              const isWinnerState =
+                result.raffle.status === 'COMPLETED' || winnerEvent !== null;
+              const winnerDisplayName =
+                winnerEvent?.winnerEmail ?? 'Winner account';
+
+              return (
             <Paper
               sx={{
                 p: { xs: 3.5, md: 5 },
@@ -256,16 +333,57 @@ export default async function RaffleDetailsPage({
                 >
                   <Stack spacing={1}>
                     <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: '0.08em' }}>
-                      Live raffle
+                      {isWinnerState ? 'Winner selected' : 'Live raffle'}
                     </Typography>
                     <Typography variant="h2">{result.raffle.title}</Typography>
                   </Stack>
-                  <Chip
-                    label={statusLabelByValue[result.raffle.status]}
-                    color={statusColorByValue[result.raffle.status]}
-                    variant="filled"
-                  />
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                    {isWinnerState ? (
+                      <Chip
+                        icon={<WorkspacePremiumRounded />}
+                        label="Winner"
+                        color="tertiary"
+                        variant="filled"
+                      />
+                    ) : null}
+                    <Chip
+                      label={statusLabelByValue[result.raffle.status]}
+                      color={statusColorByValue[result.raffle.status]}
+                      variant="filled"
+                    />
+                  </Stack>
                 </Stack>
+
+                {isWinnerState ? (
+                  <Paper
+                    sx={{
+                      p: 3,
+                      border: '1px solid',
+                      borderColor: alpha('#8C6A00', 0.32),
+                      background:
+                        'linear-gradient(140deg, rgba(255,255,255,0.98), rgba(140,106,0,0.14))',
+                    }}
+                  >
+                    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1.25 }}>
+                      <WorkspacePremiumRounded sx={{ color: '#8C6A00' }} />
+                      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                        We have a winner
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontWeight: 700 }}>
+                      {winnerDisplayName}
+                    </Typography>
+                    {winnerEvent ? (
+                      <Typography variant="body2" color="text.secondary">
+                        Winning ticket #{String(winnerEvent.winnerTicketNumber)}
+                      </Typography>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Winner has been selected and announced.
+                      </Typography>
+                    )}
+                  </Paper>
+                ) : null}
 
                 {result.raffle.imageUrls.length > 0 ? (
                   <Stack spacing={1.5}>
@@ -407,6 +525,8 @@ export default async function RaffleDetailsPage({
                 />
               </Stack>
             </Paper>
+              );
+            })()
           )}
         </Stack>
       </Container>
