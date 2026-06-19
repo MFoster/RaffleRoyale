@@ -16,7 +16,6 @@ import { randomInt, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AuthContext } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRaffleDto } from './dto/create-raffle.dto';
 import { PurchaseTicketsDto } from './dto/purchase-tickets.dto';
@@ -163,11 +162,13 @@ type RaffleDetailWinnerTicket = NonNullable<RaffleDetailEvent['winnerTicket']>;
 export type RaffleDetail = Omit<RaffleDetailBase, 'events'> & {
   events: Array<
     Omit<RaffleDetailEvent, 'winnerTicket'> & {
-      winnerTicket: (Omit<RaffleDetailWinnerTicket, 'buyer'> & {
-        buyer: Omit<RaffleDetailWinnerTicket['buyer'], 'email'> & {
-          email: string | null;
-        };
-      }) | null;
+      winnerTicket:
+        | (Omit<RaffleDetailWinnerTicket, 'buyer'> & {
+            buyer: Omit<RaffleDetailWinnerTicket['buyer'], 'email'> & {
+              email: string | null;
+            };
+          })
+        | null;
     }
   >;
 };
@@ -343,7 +344,7 @@ export class RaffleService {
     });
   }
 
-  async findOne(id: string, _auth?: AuthContext): Promise<RaffleDetail> {
+  async findOne(id: string): Promise<RaffleDetail> {
     const raffle = await this.prisma.raffle.findUnique({
       where: { id },
       include: raffleDetailInclude,

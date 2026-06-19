@@ -468,9 +468,10 @@ describe('RaffleService', () => {
       winnerTicketId: 'ticket-5',
       winnerTicketNumber: 5,
       ticketCount: 8,
-      randomIndex: expect.any(Number),
+      randomIndex: result.randomIndex,
       raffleStatus: RaffleStatus.COMPLETED,
     });
+    expect(typeof result.randomIndex).toBe('number');
   });
 
   it('throws when resolving winner for a non-sold-out raffle', async () => {
