@@ -1,4 +1,4 @@
-FROM node:20-slim AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /workspace
 
 FROM base AS deps
