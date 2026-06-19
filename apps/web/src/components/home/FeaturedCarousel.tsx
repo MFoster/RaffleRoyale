@@ -116,15 +116,6 @@ export default function FeaturedCarousel({
     [handlePrevious, handleNext]
   );
 
-  const handleCardClick = useCallback(
-    (raffleId: string) => {
-      if (onRaffleClick) {
-        onRaffleClick(raffleId);
-      }
-    },
-    [onRaffleClick]
-  );
-
   if (visibleRaffles.length === 0) {
     return null;
   }
@@ -222,7 +213,6 @@ export default function FeaturedCarousel({
         >
           <EnhancedRaffleCard
             raffle={currentRaffle}
-            onClick={() => handleCardClick(currentRaffle.id)}
           />
         </Box>
 
