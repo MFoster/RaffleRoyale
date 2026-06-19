@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import sqlite3 from 'sqlite3';
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SchedulerConfigService } from '../config/scheduler-config.service';
 import type { Schedule, ScheduleState } from '../types/schedule.types';
 
@@ -13,7 +13,7 @@ interface RunResult {
 export class ScheduleRepository implements OnModuleInit, OnModuleDestroy {
   private db: sqlite3.Database | null = null;
 
-  constructor(private readonly config: SchedulerConfigService) {}
+  constructor(@Inject(SchedulerConfigService) private readonly config: SchedulerConfigService) {}
 
   async onModuleInit(): Promise<void> {
     const path = this.config.dbPath;

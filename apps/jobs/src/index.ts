@@ -20,9 +20,10 @@ function printHelp(): void {
 async function main(): Promise<void> {
   loadEnv();
 
+  const [commandName, ...args] = process.argv.slice(2);
   const sqsQueueUrl = process.env.JOBS_SQS_QUEUE_URL;
 
-  if (sqsQueueUrl) {
+  if (!commandName && sqsQueueUrl) {
     if (!process.env.QUEUE_MESSAGE_SIGNING_KEY) {
       throw new Error(
         'QUEUE_MESSAGE_SIGNING_KEY is required when JOBS_SQS_QUEUE_URL is configured.',
@@ -33,8 +34,6 @@ async function main(): Promise<void> {
     await workerModule.startWorker(sqsQueueUrl);
     return;
   }
-
-  const [commandName, ...args] = process.argv.slice(2);
 
   if (!commandName || commandName === '--help' || commandName === '-h' || commandName === 'help') {
     printHelp();

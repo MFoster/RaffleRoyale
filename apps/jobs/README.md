@@ -25,6 +25,7 @@ Available commands:
 | `db:health` | Verify the database is reachable with `SELECT 1`. | None |
 | `db:stats` | Print row counts for the core raffle tables. | None |
 | `seed` | Hydrate the database from a YAML fixture file. | Optional fixture path |
+| `sweep` | Resolve winners for eligible raffles that are missing winner selection. | None |
 
 Examples:
 
@@ -34,11 +35,13 @@ npm run dev -w jobs -- db:stats
 npm run dev -w jobs -- migrate
 npm run dev -w jobs -- seed
 npm run dev -w jobs -- seed fixtures/custom-seed.yaml
+npm run dev -w jobs -- sweep
 ```
 
 ## Running as a worker
 
-If `JOBS_SQS_QUEUE_URL` is present, the app ignores CLI command mode and starts the SQS worker instead.
+If `JOBS_SQS_QUEUE_URL` is present and no command is provided, the app starts the SQS worker.
+If you pass an explicit command such as `sweep`, command mode takes precedence.
 
 The worker also uses these environment variables:
 

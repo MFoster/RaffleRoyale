@@ -11,7 +11,8 @@
     "prisma:generate": "npm run prisma:generate -w @raffleroyale/db",
     "db:health": "tsx src/index.ts db:health",
     "db:stats": "tsx src/index.ts db:stats",
-    "seed": "tsx src/index.ts seed"
+    "seed": "tsx src/index.ts seed",
+    "sweep": "tsx src/index.ts sweep"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3",

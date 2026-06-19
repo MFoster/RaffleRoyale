@@ -30,7 +30,7 @@ COPY apps/scheduler/tsconfig.json apps/scheduler/
 COPY apps/scheduler/src apps/scheduler/src
 WORKDIR /workspace/apps/scheduler
 EXPOSE 3002
-CMD ["node_modules/.bin/tsx", "watch", "src/main.ts"]
+CMD ["/workspace/node_modules/.bin/tsx", "watch", "src/main.ts"]
 
 FROM base AS prod
 ENV NODE_ENV=production

@@ -89,15 +89,6 @@ export default function RaffleGallery({
     [onSortChange]
   );
 
-  const handleRaffleClick = useCallback(
-    (raffleId: string) => {
-      if (onRaffleClick) {
-        onRaffleClick(raffleId);
-      }
-    },
-    [onRaffleClick]
-  );
-
   if (raffles.length === 0) {
     return (
       <Box
@@ -200,7 +191,6 @@ export default function RaffleGallery({
             >
               <EnhancedRaffleCard
                 raffle={raffle}
-                onClick={() => handleRaffleClick(raffle.id)}
               />
             </Grid>
           ))}

@@ -351,7 +351,7 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
                 <Grid container spacing={{ xs: 2, md: 3 }}>
                   {filteredRaffles.map((raffle) => (
                     <Grid key={raffle.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                      <EnhancedRaffleCard raffle={raffle} onClick={() => onRaffleClick?.(raffle.id)} />
+                      <EnhancedRaffleCard raffle={raffle} />
                     </Grid>
                   ))}
                 </Grid>

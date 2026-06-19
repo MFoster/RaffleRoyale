@@ -1,5 +1,5 @@
 import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { signQueuePayload } from '@raffleroyale/queue-signature';
 import { SchedulerConfigService } from '../config/scheduler-config.service';
 
@@ -7,7 +7,7 @@ import { SchedulerConfigService } from '../config/scheduler-config.service';
 export class SchedulerSqsService {
   private readonly client: SQSClient;
 
-  constructor(private readonly config: SchedulerConfigService) {
+  constructor(@Inject(SchedulerConfigService) private readonly config: SchedulerConfigService) {
     this.client = new SQSClient({
       region: this.config.region,
       endpoint: this.config.sqsEndpointUrl,

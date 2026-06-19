@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { ScheduleService } from '../schedule.service';
 
@@ -14,7 +14,7 @@ interface CreateScheduleOptions {
   description: 'Manually create a local-format schedule from the CLI',
 })
 export class CreateScheduleCommand extends CommandRunner {
-  constructor(private readonly scheduleService: ScheduleService) {
+  constructor(@Inject(ScheduleService) private readonly scheduleService: ScheduleService) {
     super();
   }
 
