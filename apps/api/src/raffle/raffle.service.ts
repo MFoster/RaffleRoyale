@@ -16,6 +16,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { AuthContext } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRaffleDto } from './dto/create-raffle.dto';
 import { PurchaseTicketsDto } from './dto/purchase-tickets.dto';
@@ -344,7 +345,7 @@ export class RaffleService {
     });
   }
 
-  async findOne(id: string): Promise<RaffleDetail> {
+  async findOne(id: string, auth?: AuthContext): Promise<RaffleDetail> {
     const raffle = await this.prisma.raffle.findUnique({
       where: { id },
       include: raffleDetailInclude,
@@ -353,7 +354,27 @@ export class RaffleService {
     if (!raffle) {
       throw new NotFoundException(`Raffle ${id} not found`);
     }
-    return raffle;
+
+    const isOwner = auth?.userId === raffle.rafflerId;
+    const isAdmin = auth?.role === 'ADMIN';
+    const canSeeWinnerEmail = isOwner || isAdmin;
+    return {
+      ...raffle,
+      events: raffle.events.map((event) => ({
+        ...event,
+        winnerTicket: event.winnerTicket
+          ? {
+              ...event.winnerTicket,
+              buyer: {
+                ...event.winnerTicket.buyer,
+                email: canSeeWinnerEmail
+                  ? event.winnerTicket.buyer.email
+                  : null,
+              },
+            }
+          : null,
+      })),
+    };
   }
 
   async purchaseTickets(

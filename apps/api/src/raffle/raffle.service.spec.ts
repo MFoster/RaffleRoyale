@@ -331,12 +331,10 @@ describe('RaffleService', () => {
     });
   });
 
-  it('shows winner email for public raffle detail requests', async () => {
+  it('redacts winner email for unauthenticated raffle detail requests', async () => {
     const result = await service.findOne(raffleId);
 
-    expect(result.events[0]?.winnerTicket?.buyer?.email).toBe(
-      'winner@example.com',
-    );
+    expect(result.events[0]?.winnerTicket?.buyer?.email).toBeNull();
     expect(result.raffler.email).toBe('raffler@example.com');
   });
 
