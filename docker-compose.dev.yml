@@ -48,6 +48,7 @@ services:
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
+      UPLOADS_DIRECTORY: /workspace/apps/api/uploads
       PORT: 3001
       FRONTEND_URL: http://localhost:3100
       JWT_SECRET: dev-jwt-secret-change-me
@@ -67,6 +68,7 @@ services:
       - .:/workspace
       - api-node-modules:/workspace/node_modules
       - api-app-node-modules:/workspace/apps/api/node_modules
+      - shared-uploads:/workspace/apps/api/uploads/
 
   web:
     build:
@@ -99,6 +101,7 @@ services:
       - npm run prisma:generate -w jobs; exec node_modules/.bin/tsx apps/jobs/src/index.ts
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
+      UPLOADS_DIRECTORY: /workspace/apps/jobs/uploads
       JOBS_SQS_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs
       JOBS_SQS_REPLY_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs-replies
       JOBS_SQS_ENDPOINT_URL: http://elasticmq:9324
@@ -113,6 +116,8 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/jobs/src:/workspace/apps/jobs/src
+      - ./apps/jobs/fixtures:/workspace/apps/jobs/fixtures
+      - shared-uploads:/workspace/apps/jobs/uploads
 
   scheduler:
     build:
@@ -150,3 +155,4 @@ volumes:
   web-next:
   scheduler-node-modules:
   scheduler-app-node-modules:
+  shared-uploads:
