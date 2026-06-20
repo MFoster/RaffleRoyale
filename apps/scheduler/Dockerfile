@@ -1,4 +1,4 @@
-FROM node:20-slim AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /workspace
 
 FROM base AS deps
@@ -25,6 +25,7 @@ RUN npm run build -w scheduler
 
 FROM base AS dev
 COPY --from=deps /workspace/node_modules /workspace/node_modules
+COPY packages/queue-signature /workspace/packages/queue-signature
 COPY apps/scheduler/package.json apps/scheduler/
 COPY apps/scheduler/tsconfig.json apps/scheduler/
 COPY apps/scheduler/src apps/scheduler/src

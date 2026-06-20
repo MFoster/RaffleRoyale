@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-bookworm-slim AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /workspace
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl \
@@ -14,6 +14,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci --workspace api --include-worksp
 
 FROM deps AS dev
 ENV NODE_ENV=development
+COPY apps/api apps/api
+COPY packages/db/prisma packages/db/prisma
 EXPOSE 3001
 CMD ["npm", "run", "start:dev", "-w", "api"]
 

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-bookworm-slim AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /workspace
 
 FROM base AS deps
@@ -10,6 +10,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --workspace web --include-worksp
 
 FROM deps AS dev
 ENV NODE_ENV=development
+COPY apps/web apps/web
 EXPOSE 3000
 CMD ["npm", "run", "dev", "-w", "web", "--", "--hostname", "0.0.0.0", "--port", "3000"]
 
@@ -19,7 +20,7 @@ ENV API_PROXY_TARGET=$API_PROXY_TARGET
 COPY apps/web apps/web
 RUN npm run build -w web
 
-FROM node:20-bookworm-slim AS prod
+FROM node:22-bookworm-slim AS prod
 WORKDIR /workspace
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0

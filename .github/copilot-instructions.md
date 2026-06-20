@@ -11,6 +11,8 @@
 - Run API e2e tests explicitly with `npm run test:e2e -w api`.
 - Run a single API unit test file with `npm run test -w api -- --runTestsByPath src/raffles/raffles.service.spec.ts`.
 - Run a single API e2e test file with `npm run test:e2e -w api -- --runInBand --runTestsByPath test/access.e2e-spec.ts`.
+- If the command requires connection to the database or messaging services or is an attempt to fix a running application. Make sure to run commands from within the docker containers with `docker compose -it exec raffle-royale-jobs-1 sh`
+- When debugging, the application stack is always running through docker compose, so running npm start from the host machine will cause issues.
 
 ## High-level architecture
 

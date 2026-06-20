@@ -9,7 +9,8 @@ import * as fs from 'fs';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const uploadsDirectory = join(process.cwd(), 'uploads');
+  const uploadsDirectory =
+    process.env.UPLOADS_DIRECTORY ?? join(__dirname, '..', 'uploads');
 
   mkdirSync(uploadsDirectory, { recursive: true });
   app.use('/uploads', serveStaticAssets(uploadsDirectory));
