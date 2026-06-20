@@ -11,6 +11,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import ImagePlaceholder from '@/components/ImagePlaceholder';
+import RaffleImageCarousel from '@/components/RaffleImageCarousel';
 import RaffleDetailsActions from '@/components/RaffleDetailsActions';
 import SiteHeader from '@/components/SiteHeader';
 import { royaleTokens } from '@/design-system';
@@ -386,51 +387,10 @@ export default async function RaffleDetailsPage({
                 ) : null}
 
                 {result.raffle.imageUrls.length > 0 ? (
-                  <Stack spacing={1.5}>
-                    <Box
-                      component="img"
-                      src={result.raffle.imageUrls[0]}
-                      alt={`${result.raffle.title} primary image`}
-                      sx={{
-                        width: '100%',
-                        minHeight: 340,
-                        maxHeight: 460,
-                        objectFit: 'cover',
-                        borderRadius: 3,
-                        border: '1px solid',
-                        borderColor: alpha('#5B3DF5', 0.2),
-                      }}
-                    />
-                    {result.raffle.imageUrls.length > 1 ? (
-                      <Box
-                        sx={{
-                          display: 'grid',
-                          gap: 1.5,
-                          gridTemplateColumns: {
-                            xs: 'repeat(2, 1fr)',
-                            md: 'repeat(3, 1fr)',
-                          },
-                        }}
-                      >
-                        {result.raffle.imageUrls.slice(1).map((imageUrl, index) => (
-                          <Box
-                            key={imageUrl}
-                            component="img"
-                            src={imageUrl}
-                            alt={`${result.raffle.title} image ${String(index + 2)}`}
-                            sx={{
-                              width: '100%',
-                              height: 120,
-                              objectFit: 'cover',
-                              borderRadius: 2,
-                              border: '1px solid',
-                              borderColor: alpha('#5B3DF5', 0.18),
-                            }}
-                          />
-                        ))}
-                      </Box>
-                    ) : null}
-                  </Stack>
+                  <RaffleImageCarousel
+                    imageUrls={result.raffle.imageUrls}
+                    title={result.raffle.title}
+                  />
                 ) : (
                   <ImagePlaceholder
                     minHeight={340}

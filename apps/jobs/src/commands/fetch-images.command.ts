@@ -6,6 +6,7 @@ import type { JobCommand } from './types';
 interface UnsplashPhoto {
   id: string;
   urls: {
+    raw?: string;
     regular: string;
   };
   alt_description: string;
@@ -15,6 +16,7 @@ interface SeedFixture {
   raffles: Array<{
     title: string;
     imageUrls?: string[];
+    imageSearchTerms?: string[];
   }>;
 }
 
@@ -29,6 +31,26 @@ async function fileExists(filepath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function buildDownloadUrl(photo: UnsplashPhoto): string {
+  const url = new URL(photo.urls.raw ?? photo.urls.regular);
+  url.searchParams.set('fm', 'jpg');
+  url.searchParams.set('fit', 'crop');
+  url.searchParams.set('w', '1600');
+  url.searchParams.set('h', '900');
+  url.searchParams.set('q', '80');
+  return url.toString();
+}
+
+function buildFallbackSearchTerms(title: string): string[] {
+  const compact = title
+    .split(' ')
+    .filter((word) => !['Size', 'GB', 'RAM', 'Edition', 'PSA', 'BGS'].includes(word))
+    .slice(0, 3)
+    .join(' ');
+
+  return [compact];
 }
 
 async function downloadImage(url: string, filepath: string): Promise<void> {
@@ -72,12 +94,10 @@ async function fetchProductImages(): Promise<void> {
     }
 
     try {
-      // Extract filenames from imageUrls
       const filenames = imageUrls
         .map((url) => url.split('/').pop())
         .filter(isNonEmptyString);
 
-      // Check if all images already exist
       const fileExistResults = await Promise.all(
         filenames.map((filename) => fileExists(path.join(outputDir, filename))),
       );
@@ -88,50 +108,72 @@ async function fetchProductImages(): Promise<void> {
         continue;
       }
 
-      // Search for product images
-      const searchTerm = raffle.title
-        .split(' ')
-        .filter((w) => !['Size', 'GB', 'RAM', 'Edition', 'PSA', 'BGS'].includes(w))
-        .slice(0, 3)
-        .join(' ');
+      const searchTerms =
+        raffle.imageSearchTerms && raffle.imageSearchTerms.length > 0
+          ? raffle.imageSearchTerms.filter((term) => term.trim().length > 0)
+          : buildFallbackSearchTerms(raffle.title);
+      const photos: UnsplashPhoto[] = [];
+      const seenPhotoIds = new Set<string>();
+      let requestCount = 0;
 
-      console.log(`[${i + 1}/${fixture.raffles.length}] Searching for: "${searchTerm}"`);
-      const searchUrl = new URL('https://api.unsplash.com/search/photos');
-      searchUrl.searchParams.set('query', searchTerm);
-      searchUrl.searchParams.set('per_page', String(filenames.length));
-      searchUrl.searchParams.set('order_by', 'relevant');
-      searchUrl.searchParams.set('client_id', accessKey);
+      for (const searchTerm of searchTerms) {
+        if (photos.length >= filenames.length) {
+          break;
+        }
 
-      const searchResponse = await fetch(searchUrl.toString());
-      if (!searchResponse.ok) {
-        console.warn(`⚠ API error for "${searchTerm}": ${searchResponse.statusText}`);
-        errorCount++;
-      } else {
-        const searchData = (await searchResponse.json()) as { results: UnsplashPhoto[] };
-        if (!Array.isArray(searchData.results) || searchData.results.length === 0) {
-          console.warn(`⚠ No results for "${searchTerm}"`);
-          errorCount++;
+        console.log(`[${i + 1}/${fixture.raffles.length}] Searching for: "${searchTerm}"`);
+        const searchUrl = new URL('https://api.unsplash.com/search/photos');
+        searchUrl.searchParams.set('query', searchTerm);
+        searchUrl.searchParams.set('per_page', String(Math.max(filenames.length * 3, 6)));
+        searchUrl.searchParams.set('order_by', 'relevant');
+        searchUrl.searchParams.set('client_id', accessKey);
+
+        const searchResponse = await fetch(searchUrl.toString());
+        requestCount += 1;
+
+        if (!searchResponse.ok) {
+          console.warn(`⚠ API error for "${searchTerm}": ${searchResponse.statusText}`);
         } else {
-          const photos = searchData.results;
+          const searchData = (await searchResponse.json()) as { results: UnsplashPhoto[] };
 
-          // Download images in order, using requested filenames
-          for (const [j, filename] of filenames.entries()) {
-            const photo = photos[j];
-            const filepath = path.join(outputDir, filename);
+          if (!Array.isArray(searchData.results) || searchData.results.length === 0) {
+            console.warn(`⚠ No results for "${searchTerm}"`);
+          } else {
+            for (const photo of searchData.results) {
+              if (!seenPhotoIds.has(photo.id)) {
+                seenPhotoIds.add(photo.id);
+                photos.push(photo);
+              }
 
-            if (!(await fileExists(filepath)) && photo) {
-              await downloadImage(photo.urls.regular, filepath);
-            } else if (await fileExists(filepath)) {
-              console.log(`✓ Found (cached): ${filename}`);
+              if (photos.length >= filenames.length) {
+                break;
+              }
             }
           }
+        }
 
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+
+      if (photos.length === 0) {
+        errorCount++;
+        console.warn(`⚠ No usable image results found for "${raffle.title}"`);
+      } else {
+        for (const [j, filename] of filenames.entries()) {
+          const photo = photos[j];
+          const filepath = path.join(outputDir, filename);
+
+          if (!(await fileExists(filepath)) && photo) {
+            await downloadImage(buildDownloadUrl(photo), filepath);
+          } else if (await fileExists(filepath)) {
+            console.log(`✓ Found (cached): ${filename}`);
+          }
+        }
+
+        if (requestCount > 0) {
           fetchedCount++;
         }
       }
-
-      // Rate limit every API request (50 requests/hour = 1 request per ~72ms, use 1200ms for safety)
-      await new Promise((resolve) => setTimeout(resolve, 1200));
     } catch (error) {
       console.error(`✗ Error fetching images for "${raffle.title}":`, error);
       errorCount++;

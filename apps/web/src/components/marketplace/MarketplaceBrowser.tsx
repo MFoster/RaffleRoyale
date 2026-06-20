@@ -4,10 +4,12 @@ import { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import SearchRounded from '@mui/icons-material/SearchRounded';
 import TuneRounded from '@mui/icons-material/TuneRounded';
 import ClearRounded from '@mui/icons-material/ClearRounded';
+import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Checkbox from '@mui/material/Checkbox';
+import Collapse from '@mui/material/Collapse';
 import Container from '@mui/material/Container';
 import Divider from '@mui/material/Divider';
 import FormControl from '@mui/material/FormControl';
@@ -86,11 +88,12 @@ export interface MarketplaceBrowserProps {
 
 export default function MarketplaceBrowser({ raffles, onRaffleClick }: MarketplaceBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<MarketplaceStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<MarketplaceStatusFilter>('ACTIVE');
   const [itemTypeFilter, setItemTypeFilter] = useState<MarketplaceItemTypeFilter>('all');
   const [sortBy, setSortBy] = useState<MarketplaceSortOption>('ending-soon');
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number] | null>(null);
   const [onlyWithImages, setOnlyWithImages] = useState(false);
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   
   const deferredSearchQuery = useDeferredValue(searchQuery.trim().toLowerCase());
   
@@ -144,7 +147,7 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
 
   const activeFilterCount = [
     deferredSearchQuery.length > 0,
-    statusFilter !== 'all',
+    statusFilter !== 'ACTIVE',
     itemTypeFilter !== 'all',
     onlyWithImages,
     effectivePriceRange[0] !== priceBounds[0] || effectivePriceRange[1] !== priceBounds[1],
@@ -152,7 +155,7 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
 
   const clearFilters = useCallback(() => {
     setSearchQuery('');
-    setStatusFilter('all');
+    setStatusFilter('ACTIVE');
     setItemTypeFilter('all');
     setSortBy('ending-soon');
     setOnlyWithImages(false);
@@ -225,103 +228,143 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
                     <TuneRounded fontSize="small" />
                     Advanced filters
                   </Box>
-                  <Button onClick={clearFilters} size="small" variant="text" startIcon={<ClearRounded />}>
-                    Clear
-                  </Button>
-                </Stack>
-
-                <FormControl size="small" fullWidth>
-                  <InputLabel id="marketplace-sort-label">Sort by</InputLabel>
-                  <Select
-                    labelId="marketplace-sort-label"
-                    value={sortBy}
-                    label="Sort by"
-                    onChange={(event) => setSortBy(event.target.value as MarketplaceSortOption)}
-                  >
-                    {Object.entries(sortLabelByValue).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl size="small" fullWidth>
-                  <InputLabel id="marketplace-status-label">Status</InputLabel>
-                  <Select
-                    labelId="marketplace-status-label"
-                    value={statusFilter}
-                    label="Status"
-                    onChange={(event) => setStatusFilter(event.target.value as MarketplaceStatusFilter)}
-                  >
-                    <MenuItem value="all">All statuses</MenuItem>
-                    {Object.entries(statusLabelByValue).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl size="small" fullWidth>
-                  <InputLabel id="marketplace-type-label">Item type</InputLabel>
-                  <Select
-                    labelId="marketplace-type-label"
-                    value={itemTypeFilter}
-                    label="Item type"
-                    onChange={(event) => setItemTypeFilter(event.target.value as MarketplaceItemTypeFilter)}
-                  >
-                    <MenuItem value="all">All item types</MenuItem>
-                    {Object.entries(itemTypeLabelByValue).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <Box>
-                  <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                      Ticket price
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {formatCurrencyFromMinorUnits(effectivePriceRange[0])} - {formatCurrencyFromMinorUnits(effectivePriceRange[1])}
-                    </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      onClick={() => setIsAdvancedFiltersOpen((previous) => !previous)}
+                      size="small"
+                      variant="outlined"
+                      aria-expanded={isAdvancedFiltersOpen}
+                      endIcon={
+                        <ExpandMoreRounded
+                          sx={{
+                            transform: isAdvancedFiltersOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: (theme) =>
+                              theme.transitions.create('transform', {
+                                duration: theme.transitions.duration.shorter,
+                              }),
+                          }}
+                        />
+                      }
+                    >
+                      {isAdvancedFiltersOpen ? 'Hide filters' : 'Show filters'}
+                    </Button>
+                    <Button
+                      onClick={clearFilters}
+                      size="small"
+                      variant="text"
+                      startIcon={<ClearRounded />}
+                    >
+                      Clear
+                    </Button>
                   </Stack>
-                  <Slider
-                    value={effectivePriceRange}
-                    onChange={handlePriceRangeChange}
-                    min={priceBounds[0]}
-                    max={priceBounds[1]}
-                    disabled={priceBounds[0] === priceBounds[1]}
-                    valueLabelDisplay="auto"
-                    valueLabelFormat={(value) => formatCurrencyFromMinorUnits(Number(value))}
-                  />
-                </Box>
-
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={onlyWithImages}
-                      onChange={(_, checked) => setOnlyWithImages(checked)}
-                    />
-                  }
-                  label="Only listings with images"
-                />
-
-                <Divider />
-
-                <Stack spacing={1}>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    Active filters
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {activeFilterCount === 0
-                      ? 'No filters are active.'
-                      : `${String(activeFilterCount)} filter${activeFilterCount === 1 ? '' : 's'} active.`}
-                  </Typography>
                 </Stack>
+
+                <Collapse in={isAdvancedFiltersOpen} timeout="auto" unmountOnExit>
+                  <Stack spacing={3}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="marketplace-sort-label">Sort by</InputLabel>
+                      <Select
+                        labelId="marketplace-sort-label"
+                        value={sortBy}
+                        label="Sort by"
+                        onChange={(event) =>
+                          setSortBy(event.target.value as MarketplaceSortOption)
+                        }
+                      >
+                        {Object.entries(sortLabelByValue).map(([value, label]) => (
+                          <MenuItem key={value} value={value}>
+                            {label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="marketplace-status-label">Status</InputLabel>
+                      <Select
+                        labelId="marketplace-status-label"
+                        value={statusFilter}
+                        label="Status"
+                        onChange={(event) =>
+                          setStatusFilter(event.target.value as MarketplaceStatusFilter)
+                        }
+                      >
+                        <MenuItem value="all">All statuses</MenuItem>
+                        {Object.entries(statusLabelByValue).map(([value, label]) => (
+                          <MenuItem key={value} value={value}>
+                            {label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="marketplace-type-label">Item type</InputLabel>
+                      <Select
+                        labelId="marketplace-type-label"
+                        value={itemTypeFilter}
+                        label="Item type"
+                        onChange={(event) =>
+                          setItemTypeFilter(event.target.value as MarketplaceItemTypeFilter)
+                        }
+                      >
+                        <MenuItem value="all">All item types</MenuItem>
+                        {Object.entries(itemTypeLabelByValue).map(([value, label]) => (
+                          <MenuItem key={value} value={value}>
+                            {label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <Box>
+                      <Stack
+                        direction="row"
+                        sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          Ticket price
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatCurrencyFromMinorUnits(effectivePriceRange[0])} -{' '}
+                          {formatCurrencyFromMinorUnits(effectivePriceRange[1])}
+                        </Typography>
+                      </Stack>
+                      <Slider
+                        value={effectivePriceRange}
+                        onChange={handlePriceRangeChange}
+                        min={priceBounds[0]}
+                        max={priceBounds[1]}
+                        disabled={priceBounds[0] === priceBounds[1]}
+                        valueLabelDisplay="auto"
+                        valueLabelFormat={(value) => formatCurrencyFromMinorUnits(Number(value))}
+                      />
+                    </Box>
+
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={onlyWithImages}
+                          onChange={(_, checked) => setOnlyWithImages(checked)}
+                        />
+                      }
+                      label="Only listings with images"
+                    />
+
+                    <Divider />
+
+                    <Stack spacing={1}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        Active filters
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {activeFilterCount === 0
+                          ? 'No filters are active.'
+                          : `${String(activeFilterCount)} filter${activeFilterCount === 1 ? '' : 's'} active.`}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                </Collapse>
               </Stack>
             </Paper>
 
