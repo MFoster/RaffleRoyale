@@ -12,7 +12,8 @@
     "db:health": "tsx src/index.ts db:health",
     "db:stats": "tsx src/index.ts db:stats",
     "seed": "tsx src/index.ts seed",
-    "sweep": "tsx src/index.ts sweep"
+    "sweep": "tsx src/index.ts sweep",
+    "fetch:images": "tsx src/index.ts fetch:images"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3",

@@ -24,7 +24,9 @@ import { PurchaseTicketsDto } from './dto/purchase-tickets.dto';
 export const MAX_RAFFLE_IMAGE_UPLOADS = 3;
 export const MAX_RAFFLE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
-const RAFFLE_UPLOADS_DIRECTORY = join(process.cwd(), 'uploads', 'raffles');
+const UPLOADS_ROOT_DIRECTORY =
+  process.env.UPLOADS_DIRECTORY ?? join(process.cwd(), 'uploads');
+const RAFFLE_UPLOADS_DIRECTORY = join(UPLOADS_ROOT_DIRECTORY, 'raffles');
 const RAFFLE_UPLOAD_URL_PATTERN = /^\/api\/uploads\/raffles\/([\w.-]+)$/;
 const RAFFLE_IMAGE_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 const SUPPORTED_IMAGE_SIGNATURES = [

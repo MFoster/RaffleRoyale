@@ -102,6 +102,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/raffle_royale?schema=public
       UPLOADS_DIRECTORY: /workspace/apps/jobs/uploads
+      UNSPLASH_ACCESS_KEY: ${UNSPLASH_ACCESS_KEY}
       JOBS_SQS_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs
       JOBS_SQS_REPLY_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs-replies
       JOBS_SQS_ENDPOINT_URL: http://elasticmq:9324

@@ -14,6 +14,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci --workspace api --include-worksp
 
 FROM deps AS dev
 ENV NODE_ENV=development
+COPY apps/api apps/api
+COPY packages/db/prisma packages/db/prisma
 EXPOSE 3001
 CMD ["npm", "run", "start:dev", "-w", "api"]
 

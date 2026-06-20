@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import {
   ItemType as ItemTypeEnum,
@@ -15,7 +15,68 @@ import { load as loadYaml } from 'js-yaml';
 import type { JobCommand } from './types';
 
 const DEFAULT_FIXTURE_FILE = path.resolve(process.cwd(), 'fixtures/seed.yaml');
+const RAFFLE_ITEMS_DIR = path.resolve(process.cwd(), 'fixtures/raffle-items');
 const BCRYPT_ROUNDS = 10;
+const RAFFLE_UPLOAD_URL_PATTERN = /^\/api\/uploads\/raffles\/([\w.-]+)$/;
+
+async function ensureSeedRaffleImages(
+  raffles: Prisma.RaffleCreateManyInput[],
+): Promise<number> {
+  const uploadsRoot =
+    process.env.UPLOADS_DIRECTORY ?? path.resolve(process.cwd(), 'uploads');
+  const uploadsDirectory = path.join(uploadsRoot, 'raffles');
+  await mkdir(uploadsDirectory, { recursive: true });
+
+  let copiedCount = 0;
+  const copies: Array<Promise<void>> = [];
+
+  for (const [raffleIndex, raffle] of raffles.entries()) {
+    const imageUrls = Array.isArray(raffle.imageUrls)
+      ? raffle.imageUrls
+      : [];
+
+    if (imageUrls.length === 0) {
+      continue;
+    }
+
+    for (const [imageIndex, imageUrl] of imageUrls.entries()) {
+      const match = RAFFLE_UPLOAD_URL_PATTERN.exec(imageUrl);
+
+      if (!match) {
+        throw new Error(
+          `raffles[${String(raffleIndex)}].imageUrls[${String(imageIndex)}] must use /api/uploads/raffles/<file-name> path.`,
+        );
+      }
+
+      const fileName = match[1];
+
+      if (!fileName) {
+        throw new Error(
+          `raffles[${String(raffleIndex)}].imageUrls[${String(imageIndex)}] contains an invalid upload file name.`,
+        );
+      }
+
+      if (!fileName.toLowerCase().endsWith('.jpg')) {
+        throw new Error(
+          `raffles[${String(raffleIndex)}].imageUrls[${String(imageIndex)}] must reference a .jpg file in raffle-items/`,
+        );
+      }
+
+      const sourceFile = path.join(RAFFLE_ITEMS_DIR, fileName);
+      const destFile = path.join(uploadsDirectory, fileName);
+      try {
+        await access(sourceFile);
+        copies.push(copyFile(sourceFile, destFile));
+        copiedCount += 1;
+      } catch {
+        console.log("⚠️  Source image file does not exist, skipping copy:", sourceFile);
+      }
+    }
+  }
+
+  await Promise.all(copies);
+  return copiedCount;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -618,6 +679,7 @@ async function parseSeedFixture(filePath: string): Promise<SeedPayload> {
 async function clearTables(prisma: PrismaClient): Promise<void> {
   await prisma.$transaction([
     prisma.raffleEvent.deleteMany(),
+    prisma.pendingRaffleImageUpload.deleteMany(),
     prisma.ticket.deleteMany(),
     prisma.payout.deleteMany(),
     prisma.transaction.deleteMany(),
@@ -677,6 +739,7 @@ export const seedCommand: JobCommand = {
       : DEFAULT_FIXTURE_FILE;
 
     const payload = await parseSeedFixture(fixturePath);
+    const copiedImageCount = await ensureSeedRaffleImages(payload.raffles);
 
     await clearTables(prisma);
     await seedTables(prisma, payload);
@@ -686,5 +749,6 @@ export const seedCommand: JobCommand = {
     console.log(
       `Rows inserted: users=${payload.users.length}, raffles=${payload.raffles.length}, transactions=${payload.transactions.length}, tickets=${payload.tickets.length}, payouts=${payload.payouts.length}, raffleEvents=${payload.raffleEvents.length}`,
     );
+    console.log(`Copied raffle product images: ${copiedImageCount}`);
   },
 };

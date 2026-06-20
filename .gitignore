@@ -13,3 +13,4 @@ apps/api/uploads/
 .env.test.local
 .env.production.local
 .last-run.json
+uploads/

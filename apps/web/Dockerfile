@@ -10,6 +10,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --workspace web --include-worksp
 
 FROM deps AS dev
 ENV NODE_ENV=development
+COPY apps/web apps/web
 EXPOSE 3000
 CMD ["npm", "run", "dev", "-w", "web", "--", "--hostname", "0.0.0.0", "--port", "3000"]
 
