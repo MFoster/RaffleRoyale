@@ -4,15 +4,19 @@ import AutorenewRounded from '@mui/icons-material/AutorenewRounded';
 import ConfirmationNumberRounded from '@mui/icons-material/ConfirmationNumberRounded';
 import Inventory2Rounded from '@mui/icons-material/Inventory2Rounded';
 import VisibilityRounded from '@mui/icons-material/VisibilityRounded';
+import StorefrontRounded from '@mui/icons-material/StorefrontRounded';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import EnhancedHomepageRaffles from '@/components/home/EnhancedHomepageRaffles';
 import { alpha } from '@mui/material/styles';
+import PageContainer from '@/components/layout/PageContainer';
+import Section from '@/components/layout/Section';
+import SectionHeading from '@/components/layout/SectionHeading';
 import SiteHeader from '@/components/SiteHeader';
 import { royaleTokens } from '@/design-system';
 import { raffleFindAll } from '@/generated/clients';
@@ -53,60 +57,17 @@ type FetchRafflesResult =
   | { ok: true; data: RaffleListItem[] }
   | { ok: false; error: string };
 
-const statusLabelByValue: Record<RaffleStatus, string> = {
-  DRAFT: 'Draft',
-  ACTIVE: 'Active',
-  SOLD_OUT: 'Sold out',
-  EXPIRED: 'Expired',
-  DISBANDED: 'Disbanded',
-  COMPLETED: 'Completed',
-};
-
-const statusColorByValue: Record<
-  RaffleStatus,
-  'primary' | 'secondary' | 'tertiary' | 'neutral'
-> = {
-  DRAFT: 'neutral',
-  ACTIVE: 'primary',
-  SOLD_OUT: 'tertiary',
-  EXPIRED: 'neutral',
-  DISBANDED: 'secondary',
-  COMPLETED: 'tertiary',
-};
-
 const toneColorByValue = {
   primary: '#5B3DF5',
-  secondary: '#4F5D75',
-  tertiary: '#8C6A00',
+  secondary: '#E5187A',
+  tertiary: '#B97E00',
 } as const;
 
-const sectionTitleSx = {
-  maxWidth: 820,
-} as const;
-
-const sectionEyebrowSx = {
-  color: 'primary.main',
-  fontWeight: 700,
-  letterSpacing: '0.08em',
-} as const;
-
-const sectionSurfaceSx = {
-  py: { xs: 2, md: 3 },
-} as const;
-
-const sectionPanelSx = {
-  p: { xs: 4, md: 6 },
-  border: '1px solid',
-  borderColor: royaleTokens.surface.outline,
-  bgcolor: royaleTokens.surface.overlay,
-  boxShadow: '0 16px 36px rgba(23, 21, 31, 0.08)',
-} as const;
-
-const heroActionButtonSx = {
-  px: 5,
-  py: 2,
-  minHeight: 60,
-} as const;
+const heroHighlights = [
+  'Fixed ticket counts',
+  'Live progress',
+  'Transparent outcomes',
+] as const;
 
 const howItWorksSteps = [
   {
@@ -261,26 +222,9 @@ async function fetchLiveRaffles(): Promise<FetchRafflesResult> {
   }
 }
 
-function formatCurrencyFromMinorUnits(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-  }).format(amount / 100);
-}
-
-function formatDateLabel(value: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(value));
-}
-
 export default async function Home() {
   const rafflesResult = await fetchLiveRaffles();
   const liveRaffles = rafflesResult.ok ? rafflesResult.data : [];
-  const highlightedRaffle = liveRaffles[0] ?? null;
   const discoveryRaffles = liveRaffles.map((raffle) => ({
     id: raffle.id,
     title: raffle.title,
@@ -295,104 +239,201 @@ export default async function Home() {
   }));
 
   return (
-    <Box sx={{ pb: 8, background: royaleTokens.surface.heroGradient }}>
+    <Box sx={{ pb: { xs: 6, md: 10 }, background: royaleTokens.surface.heroGradient }}>
       <SiteHeader />
 
-      <Container maxWidth="xl" sx={{ pt: { xs: 5, md: 8 }, px: { xs: 3, md: 4 } }}>
-        <Stack >
-   
+      <PageContainer sx={{ pt: { xs: 4, md: 6 } }}>
+        <Section spacing="normal" component="div" sx={{ pt: 0 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: { xs: 4, md: 6 },
+              gridTemplateColumns: { xs: '1fr', md: '1.05fr 0.95fr' },
+              alignItems: 'center',
+            }}
+          >
+            <Stack spacing={3} sx={{ maxWidth: royaleTokens.layout.contentMeasure }}>
+              <Typography variant="overline" sx={{ color: 'secondary.main', fontWeight: 700, letterSpacing: '0.08em' }}>
+                Peer-to-peer raffle marketplace
+              </Typography>
+              <Typography variant="h1">
+                Win standout gear through raffles you can actually trust.
+              </Typography>
+              <Typography variant="subtitle1" color="text.secondary">
+                Browse live listings, buy tickets with full visibility into odds and
+                progress, and follow every raffle through a clear, auditable outcome.
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ pt: 0.5 }}>
+                <Button
+                  href="/marketplace"
+                  variant="contained"
+                  size="large"
+                  startIcon={<StorefrontRounded />}
+                >
+                  Browse marketplace
+                </Button>
+                <Button href="/raffles/create" variant="outlined" size="large" startIcon={<AddBoxRounded />}>
+                  Create a raffle
+                </Button>
+              </Stack>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, pt: 0.5 }}>
+                {heroHighlights.map((highlight) => (
+                  <Box
+                    key={highlight}
+                    sx={{
+                      px: 2,
+                      py: 0.75,
+                      borderRadius: 999,
+                      border: '1px solid',
+                      borderColor: alpha('#5B3DF5', 0.2),
+                      bgcolor: alpha('#5B3DF5', 0.06),
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    {highlight}
+                  </Box>
+                ))}
+              </Stack>
+            </Stack>
 
-          <Box component="section" id="featured-raffles" sx={sectionSurfaceSx}>
-            {discoveryRaffles.length > 0 ? (
-              <EnhancedHomepageRaffles
-                raffles={discoveryRaffles}
-                title="Discover live raffles"
-                subtitle="Browse featured listings and sort by what matters most."
-              />
-            ) : (
-              <Paper variant="outlined" sx={{ p: 4 }}>
-                <Typography color="text.secondary">
-                  {rafflesResult.ok
-                    ? 'No raffles available yet. Seed data and come back to see live listings.'
-                    : rafflesResult.error}
-                </Typography>
-              </Paper>
-            )}
-          </Box>
-
-          <Box component="section" sx={sectionSurfaceSx}>
             <Paper
               sx={{
-                ...sectionPanelSx,
-                borderColor: alpha('#4F5D75', 0.24),
+                display: { xs: 'none', md: 'block' },
+                p: { md: 5 },
+                border: '1px solid',
+                borderColor: alpha('#5B3DF5', 0.18),
                 background:
-                  'linear-gradient(145deg, rgba(255,255,255,0.95), rgba(79,93,117,0.07))',
+                  'linear-gradient(150deg, rgba(91,61,245,0.10), rgba(229,24,122,0.08), rgba(247,181,0,0.10))',
               }}
             >
-              <Stack spacing={2} sx={{ mb: 4 }}>
-                <Typography variant="overline" sx={sectionEyebrowSx}>
-                  How it works
-                </Typography>
-                <Typography variant="h2" sx={sectionTitleSx}>
-                  A straightforward flow from listing to outcome.
-                </Typography>
+              <Stack spacing={3}>
+                {howItWorksSteps.map(({ step, title, description, icon: Icon, tone }) => {
+                  const accent = toneColorByValue[tone];
+
+                  return (
+                    <Stack key={step} direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+                      <Box
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          flexShrink: 0,
+                          display: 'grid',
+                          placeItems: 'center',
+                          borderRadius: '50%',
+                          bgcolor: alpha(accent, 0.14),
+                          color: accent,
+                          border: '1px solid',
+                          borderColor: alpha(accent, 0.28),
+                        }}
+                      >
+                        <Icon />
+                      </Box>
+                      <Stack spacing={0.5}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                          {title}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {description}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                  );
+                })}
               </Stack>
+            </Paper>
+          </Box>
+        </Section>
+
+        <Section component="div" id="featured-raffles" spacing="compact">
+          {discoveryRaffles.length > 0 ? (
+            <EnhancedHomepageRaffles
+              raffles={discoveryRaffles}
+              title="Discover live raffles"
+              subtitle="Browse featured listings and sort by what matters most."
+            />
+          ) : (
+            <Paper variant="outlined" sx={{ p: 4 }}>
+              <Typography color="text.secondary">
+                {rafflesResult.ok
+                  ? 'No raffles available yet. Seed data and come back to see live listings.'
+                  : rafflesResult.error}
+              </Typography>
+            </Paper>
+          )}
+        </Section>
+
+        <Section>
+          <Paper
+            sx={{
+              p: { xs: 4, md: 6 },
+              border: '1px solid',
+              borderColor: royaleTokens.surface.outline,
+              bgcolor: royaleTokens.surface.overlay,
+              boxShadow: '0 4px 12px rgba(22, 18, 38, 0.08), 0 12px 32px rgba(22, 18, 38, 0.09)',
+            }}
+          >
+            <Stack spacing={4}>
+              <SectionHeading
+                eyebrow="How it works"
+                title="A straightforward flow from listing to outcome."
+              />
 
               <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' } }}>
                 {howItWorksSteps.map(({ step, title, description, icon: Icon, tone }) => {
                   const accent = toneColorByValue[tone];
 
                   return (
-                  <Card key={title} sx={{ borderColor: alpha(accent, 0.28), bgcolor: alpha('#FFFFFF', 0.95) }}>
-                    <CardContent sx={{ p: { xs: 4, md: 5 } }}>
-                      <Stack spacing={3}>
-                        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography variant="overline" sx={{ ...sectionEyebrowSx, color: accent }}>
-                            Step {step}
-                          </Typography>
-                          <Box
-                            sx={{
-                              width: 46,
-                              height: 46,
-                              display: 'grid',
-                              placeItems: 'center',
-                              borderRadius: '50%',
-                              bgcolor: alpha(accent, 0.13),
-                              color: accent,
-                              border: '1px solid',
-                              borderColor: alpha(accent, 0.26),
-                            }}
-                          >
-                            <Icon />
-                          </Box>
+                    <Card key={title} sx={{ borderColor: alpha(accent, 0.28) }}>
+                      <CardContent sx={{ p: { xs: 4, md: 5 } }}>
+                        <Stack spacing={3}>
+                          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="overline" sx={{ color: accent, fontWeight: 700, letterSpacing: '0.08em' }}>
+                              Step {step}
+                            </Typography>
+                            <Box
+                              sx={{
+                                width: 46,
+                                height: 46,
+                                display: 'grid',
+                                placeItems: 'center',
+                                borderRadius: '50%',
+                                bgcolor: alpha(accent, 0.13),
+                                color: accent,
+                                border: '1px solid',
+                                borderColor: alpha(accent, 0.26),
+                              }}
+                            >
+                              <Icon />
+                            </Box>
+                          </Stack>
+                          <Typography variant="h5">{title}</Typography>
+                          <Typography color="text.secondary">{description}</Typography>
                         </Stack>
-                        <Typography variant="h5">{title}</Typography>
-                        <Typography color="text.secondary">{description}</Typography>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                )})}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </Box>
-            </Paper>
-          </Box>
+            </Stack>
+          </Paper>
+        </Section>
 
-          <Box component="section" sx={sectionSurfaceSx}>
-            <Paper
-              sx={{
-                ...sectionPanelSx,
-                borderColor: alpha('#8C6A00', 0.22),
-                background:
-                  'linear-gradient(150deg, rgba(255,255,255,0.96), rgba(140,106,0,0.07), rgba(79,93,117,0.06))',
-              }}
-            >
-              <Stack spacing={2} sx={{ mb: 4 }}>
-                <Typography variant="overline" sx={sectionEyebrowSx}>
-                  Built for both sides
-                </Typography>
-                <Typography variant="h2" sx={sectionTitleSx}>
-                  Buyers gain clarity while sellers gain momentum.
-                </Typography>
-              </Stack>
+        <Section>
+          <Paper
+            sx={{
+              p: { xs: 4, md: 6 },
+              border: '1px solid',
+              borderColor: alpha('#E5187A', 0.2),
+              background:
+                'linear-gradient(150deg, rgba(255,255,255,0.96), rgba(229,24,122,0.06), rgba(91,61,245,0.06))',
+            }}
+          >
+            <Stack spacing={4}>
+              <SectionHeading
+                eyebrow="Built for both sides"
+                title="Buyers gain clarity while sellers gain momentum."
+              />
 
               <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' } }}>
                 {audiencePanels.map((panel) => {
@@ -400,10 +441,10 @@ export default async function Home() {
                   const accent = toneColorByValue[panel.tone];
 
                   return (
-                    <Paper key={panel.title} sx={{ p: { xs: 4, md: 5 }, border: '1px solid', borderColor: alpha(accent, 0.26), bgcolor: alpha('#FFFFFF', 0.92) }}>
+                    <Paper key={panel.title} sx={{ p: { xs: 4, md: 5 }, border: '1px solid', borderColor: alpha(accent, 0.26) }}>
                       <Stack spacing={3}>
                         <Stack spacing={1}>
-                          <Typography variant="overline" sx={{ ...sectionEyebrowSx, color: accent }}>
+                          <Typography variant="overline" sx={{ color: accent, fontWeight: 700, letterSpacing: '0.08em' }}>
                             {panel.title}
                           </Typography>
                           <Typography variant="h5">{panel.description}</Typography>
@@ -438,10 +479,10 @@ export default async function Home() {
                   );
                 })}
               </Box>
-            </Paper>
-          </Box>
-        </Stack>
-      </Container>
+            </Stack>
+          </Paper>
+        </Section>
+      </PageContainer>
     </Box>
   );
 }

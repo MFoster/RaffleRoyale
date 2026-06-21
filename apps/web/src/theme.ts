@@ -37,9 +37,9 @@ declare module '@mui/material/Chip' {
 
 const defaultTheme = createTheme();
 const shadows = [...defaultTheme.shadows] as typeof defaultTheme.shadows;
-shadows[1] = '0 1px 2px rgba(23, 21, 31, 0.06), 0 8px 24px rgba(23, 21, 31, 0.06)';
-shadows[2] = '0 4px 12px rgba(23, 21, 31, 0.08), 0 12px 32px rgba(23, 21, 31, 0.08)';
-shadows[3] = '0 8px 24px rgba(23, 21, 31, 0.12), 0 20px 48px rgba(23, 21, 31, 0.12)';
+shadows[1] = '0 1px 2px rgba(22, 18, 38, 0.06), 0 8px 24px rgba(22, 18, 38, 0.07)';
+shadows[2] = '0 4px 12px rgba(22, 18, 38, 0.08), 0 12px 32px rgba(22, 18, 38, 0.09)';
+shadows[3] = '0 8px 24px rgba(22, 18, 38, 0.12), 0 20px 48px rgba(22, 18, 38, 0.13)';
 
 const theme = createTheme({
   cssVariables: true,
@@ -48,26 +48,26 @@ const theme = createTheme({
   palette: {
     primary: {
       main: '#5B3DF5',
-      light: '#7C66FF',
-      dark: '#4127D0',
+      light: '#8A73FF',
+      dark: '#3D22C4',
       contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#4F5D75',
-      light: '#6C7A95',
-      dark: '#39465B',
+      main: '#E5187A',
+      light: '#FF5BA6',
+      dark: '#A60E58',
       contrastText: '#FFFFFF',
     },
     tertiary: {
-      main: '#8C6A00',
-      light: '#B58A12',
-      dark: '#6D5200',
-      contrastText: '#FFFFFF',
+      main: '#F7B500',
+      light: '#FFD45E',
+      dark: '#B97E00',
+      contrastText: '#2A1D00',
     },
     neutral: {
       main: '#5B6474',
-      light: '#D4D9E2',
-      dark: '#17151F',
+      light: '#D7DBE3',
+      dark: '#161226',
       contrastText: '#FFFFFF',
     },
     info: {
@@ -78,20 +78,23 @@ const theme = createTheme({
     },
     success: {
       main: royaleTokens.accents.success,
+      contrastText: '#FFFFFF',
     },
     warning: {
       main: royaleTokens.accents.warning,
+      contrastText: '#2A1D00',
     },
     error: {
       main: royaleTokens.accents.danger,
+      contrastText: '#FFFFFF',
     },
     background: {
       default: royaleTokens.surface.canvas,
       paper: royaleTokens.surface.raised,
     },
     text: {
-      primary: '#17151F',
-      secondary: '#4B5563',
+      primary: '#161226',
+      secondary: '#535A6B',
     },
     divider: royaleTokens.surface.outline,
   },
@@ -181,16 +184,16 @@ const theme = createTheme({
         body: {
           minHeight: '100%',
           backgroundColor: royaleTokens.surface.canvas,
-          color: '#17151F',
+          color: '#161226',
         },
         'a:not(.MuiButton-root):not(.MuiButtonBase-root)': {
           color: 'inherit',
-          textDecorationColor: alpha('#4F5D75', 0.38),
+          textDecorationColor: alpha('#5B3DF5', 0.4),
           textDecorationThickness: 1,
           textUnderlineOffset: '0.16em',
         },
         'a:not(.MuiButton-root):not(.MuiButtonBase-root):hover': {
-          textDecorationColor: alpha('#4F5D75', 0.78),
+          textDecorationColor: alpha('#5B3DF5', 0.82),
         },
         '*:focus-visible': {
           outline: `3px solid ${alpha('#5B3DF5', 0.45)}`,

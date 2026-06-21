@@ -134,6 +134,7 @@ const raffleDetailInclude = {
     select: {
       id: true,
       email: true,
+      displayName: true,
     },
   },
   events: {
@@ -147,6 +148,7 @@ const raffleDetailInclude = {
             select: {
               id: true,
               email: true,
+              displayName: true,
             },
           },
         },

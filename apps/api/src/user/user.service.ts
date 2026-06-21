@@ -12,11 +12,14 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 const publicUserSelect = {
   id: true,
   email: true,
   phone: true,
+  displayName: true,
+  bio: true,
   kycStatus: true,
   createdAt: true,
   updatedAt: true,
@@ -25,6 +28,38 @@ const publicUserSelect = {
 export type PublicUser = Prisma.UserGetPayload<{
   select: typeof publicUserSelect;
 }>;
+
+const publicProfileSelect = {
+  id: true,
+  displayName: true,
+  bio: true,
+  kycStatus: true,
+  createdAt: true,
+} satisfies Prisma.UserSelect;
+
+const publicRaffleListingSelect = {
+  id: true,
+  title: true,
+  description: true,
+  imageUrls: true,
+  status: true,
+  itemType: true,
+  totalTickets: true,
+  ticketPrice: true,
+  ticketsSold: true,
+  endTime: true,
+  createdAt: true,
+} satisfies Prisma.RaffleSelect;
+
+export type PublicProfileRaffle = Prisma.RaffleGetPayload<{
+  select: typeof publicRaffleListingSelect;
+}>;
+
+export type PublicProfile = Prisma.UserGetPayload<{
+  select: typeof publicProfileSelect;
+}> & {
+  raffles: PublicProfileRaffle[];
+};
 
 const userTicketActivitySelect = {
   id: true,
@@ -37,6 +72,19 @@ const userTicketActivitySelect = {
       id: true,
       title: true,
       status: true,
+      endTime: true,
+      imageUrls: true,
+      events: {
+        where: { eventType: 'WINNER_SELECTED' },
+        select: {
+          winnerTicket: {
+            select: {
+              ticketNumber: true,
+              buyerId: true,
+            },
+          },
+        },
+      },
     },
   },
   tickets: {
@@ -47,6 +95,8 @@ const userTicketActivitySelect = {
   },
 } satisfies Prisma.TransactionSelect;
 
+export type TicketOutcome = 'PENDING' | 'WON' | 'LOST' | 'CLOSED';
+
 export type UserTicketActivityItem = {
   transactionId: string;
   amount: number;
@@ -55,10 +105,14 @@ export type UserTicketActivityItem = {
   createdAt: Date;
   quantity: number;
   ticketNumbers: number[];
+  outcome: TicketOutcome;
+  winnerTicketNumber: number | null;
   raffle: {
     id: string;
     title: string;
     status: RaffleStatus;
+    endTime: Date;
+    imageUrls: string[];
   };
 };
 
@@ -104,6 +158,47 @@ export class UserService {
     return user;
   }
 
+  async updateProfile(
+    id: string,
+    updateUserProfileDto: UpdateUserProfileDto,
+  ): Promise<PublicUser> {
+    try {
+      return await this.prisma.user.update({
+        where: { id },
+        data: {
+          displayName: updateUserProfileDto.displayName,
+          bio: updateUserProfileDto.bio,
+          phone: updateUserProfileDto.phone,
+        },
+        select: publicUserSelect,
+      });
+    } catch {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+  }
+
+  async getPublicProfile(id: string): Promise<PublicProfile> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: publicProfileSelect,
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    const raffles = await this.prisma.raffle.findMany({
+      where: {
+        rafflerId: id,
+        status: { not: RaffleStatus.DRAFT },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: publicRaffleListingSelect,
+    });
+
+    return { ...user, raffles };
+  }
+
   async findTicketActivity(userId: string): Promise<UserTicketActivityItem[]> {
     const transactions = await this.prisma.transaction.findMany({
       where: {
@@ -118,6 +213,21 @@ export class UserService {
         (ticket) => ticket.ticketNumber,
       );
 
+      const winnerTicket =
+        transaction.raffle.events[0]?.winnerTicket ?? null;
+      const winnerTicketNumber = winnerTicket?.ticketNumber ?? null;
+
+      let outcome: TicketOutcome = 'PENDING';
+      if (transaction.raffle.status === RaffleStatus.COMPLETED) {
+        outcome =
+          winnerTicket && winnerTicket.buyerId === userId ? 'WON' : 'LOST';
+      } else if (
+        transaction.raffle.status === RaffleStatus.DISBANDED ||
+        transaction.raffle.status === RaffleStatus.EXPIRED
+      ) {
+        outcome = 'CLOSED';
+      }
+
       return {
         transactionId: transaction.id,
         amount: transaction.amount,
@@ -126,10 +236,14 @@ export class UserService {
         createdAt: transaction.createdAt,
         quantity: ticketNumbers.length,
         ticketNumbers,
+        outcome,
+        winnerTicketNumber,
         raffle: {
           id: transaction.raffle.id,
           title: transaction.raffle.title,
           status: transaction.raffle.status,
+          endTime: transaction.raffle.endTime,
+          imageUrls: transaction.raffle.imageUrls,
         },
       };
     });

@@ -10,7 +10,6 @@ import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Checkbox from '@mui/material/Checkbox';
 import Collapse from '@mui/material/Collapse';
-import Container from '@mui/material/Container';
 import Divider from '@mui/material/Divider';
 import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -24,6 +23,10 @@ import Slider from '@mui/material/Slider';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import PageContainer from '../layout/PageContainer';
+import Section from '../layout/Section';
+import SectionHeading from '../layout/SectionHeading';
+import { royaleTokens } from '@/design-system';
 import EnhancedRaffleCard, { type RaffleData } from '../home/EnhancedRaffleCard';
 
 type MarketplaceStatusFilter = 'all' | 'DRAFT' | 'ACTIVE' | 'SOLD_OUT' | 'EXPIRED' | 'DISBANDED' | 'COMPLETED';
@@ -169,23 +172,14 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
   }, []);
 
   return (
-    <Box component="section" sx={{ py: { xs: 4, md: 6 } }}>
-      <Container maxWidth="xl">
+    <Section>
+      <PageContainer>
         <Stack spacing={4}>
-          <Stack spacing={1.5} sx={{ maxWidth: 900 }}>
-            <Chip
-              label="Marketplace"
-              color="tertiary"
-              variant="filled"
-              sx={{ alignSelf: 'flex-start', fontWeight: 700, color: 'tertiary.contrastText' }}
-            />
-            <Typography variant="h1" component="h1" sx={{ maxWidth: 12 * 16 }}>
-              Find the raffles you are looking for.
-            </Typography>
-            <Typography variant="subtitle1" color="text.secondary" sx={{ maxWidth: 760 }}>
-              Search live listings from one place, then narrow the field with advanced filters for status, item type, ticket price, and image availability.
-            </Typography>
-          </Stack>
+          <SectionHeading
+            eyebrow="Marketplace"
+            title="Find the raffles you are looking for."
+            subtitle="Search live listings from one place, then narrow the field with advanced filters for status, item type, ticket price, and image availability."
+          />
 
           <TextField
             value={searchQuery}
@@ -201,7 +195,7 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
                 ),
               },
             }}
-            sx={{ maxWidth: 820 }}
+            sx={{ maxWidth: royaleTokens.layout.contentMeasure }}
           />
 
           <Box
@@ -402,7 +396,7 @@ export default function MarketplaceBrowser({ raffles, onRaffleClick }: Marketpla
             </Stack>
           </Box>
         </Stack>
-      </Container>
-    </Box>
+      </PageContainer>
+    </Section>
   );
 }

@@ -338,6 +338,7 @@ function assertFixtureIntegrity(
   const raffleIds = new Set(raffles.map((row) => row.id));
   const transactionById = new Map(transactions.map((row) => [row.id, row]));
   const raffleById = new Map(raffles.map((row) => [row.id, row]));
+  const ticketById = new Map(tickets.map((row) => [row.id, row]));
   const raffleTicketNumbers = new Set<string>();
 
   for (const raffle of raffles) {
@@ -434,6 +435,22 @@ function assertFixtureIntegrity(
         `RaffleEvent ${event.id} references unknown raffleId ${event.raffleId}.`,
       );
     }
+
+    if (typeof event.winnerTicketId === 'string') {
+      const ticket = ticketById.get(event.winnerTicketId);
+
+      if (!ticket) {
+        throw new Error(
+          `RaffleEvent ${event.id} references unknown winnerTicketId ${event.winnerTicketId}.`,
+        );
+      }
+
+      if (ticket.raffleId !== event.raffleId) {
+        throw new Error(
+          `RaffleEvent ${event.id} winnerTicketId ${event.winnerTicketId} does not belong to raffle ${event.raffleId}.`,
+        );
+      }
+    }
   }
 }
 
@@ -454,6 +471,8 @@ function parseUsers(rows: Record<string, unknown>[]): SeedUserFixture[] {
   return rows.map((row, index) => {
     const context = `users[${String(index)}]`;
     const phone = readOptionalNullableString(row, 'phone', context);
+    const displayName = readOptionalNullableString(row, 'displayName', context);
+    const bio = readOptionalNullableString(row, 'bio', context);
     const createdAt = readOptionalDate(row, 'createdAt', context);
     const updatedAt = readOptionalDate(row, 'updatedAt', context);
     const kycStatus = parseOptionalEnumValue(
@@ -470,6 +489,8 @@ function parseUsers(rows: Record<string, unknown>[]): SeedUserFixture[] {
       password: readRequiredString(row, 'password', context),
       kycStatus,
       ...(phone !== undefined ? { phone } : {}),
+      ...(displayName !== undefined ? { displayName } : {}),
+      ...(bio !== undefined ? { bio } : {}),
       ...(createdAt ? { createdAt } : {}),
       ...(updatedAt ? { updatedAt } : {}),
     };
@@ -620,6 +641,11 @@ function parseRaffleEvents(
     const context = `raffleEvents[${String(index)}]`;
     const createdAt = readOptionalDate(row, 'createdAt', context);
     const metadata = readOptionalMetadata(row, 'metadata', context);
+    const winnerTicketId = readOptionalNullableString(
+      row,
+      'winnerTicketId',
+      context,
+    );
     const eventType = parseEnumValue(
       row.eventType,
       RaffleEventTypeEnum,
@@ -631,9 +657,70 @@ function parseRaffleEvents(
       raffleId: readRequiredString(row, 'raffleId', context),
       eventType,
       ...(metadata !== undefined ? { metadata } : {}),
+      ...(winnerTicketId !== undefined ? { winnerTicketId } : {}),
       ...(createdAt ? { createdAt } : {}),
     };
   });
+}
+
+function readMetadataTicketNumber(metadata: unknown): number | undefined {
+  if (
+    metadata === null ||
+    typeof metadata !== 'object' ||
+    Array.isArray(metadata)
+  ) {
+    return undefined;
+  }
+
+  const value = (metadata as Record<string, unknown>).ticketNumber;
+
+  return typeof value === 'number' && Number.isInteger(value)
+    ? value
+    : undefined;
+}
+
+// WINNER_SELECTED fixtures record the winner via metadata.ticketNumber; resolve
+// that to the concrete ticket id so the winner banner can render the winner.
+function linkWinnerTickets(
+  events: Prisma.RaffleEventCreateManyInput[],
+  tickets: Prisma.TicketCreateManyInput[],
+): void {
+  const ticketIdByKey = new Map<string, string>();
+
+  for (const ticket of tickets) {
+    if (ticket.id === undefined) {
+      continue;
+    }
+
+    ticketIdByKey.set(
+      `${ticket.raffleId}:${String(ticket.ticketNumber)}`,
+      ticket.id,
+    );
+  }
+
+  for (const event of events) {
+    if (event.eventType !== RaffleEventTypeEnum.WINNER_SELECTED) {
+      continue;
+    }
+
+    if (typeof event.winnerTicketId === 'string') {
+      continue;
+    }
+
+    const ticketNumber = readMetadataTicketNumber(event.metadata);
+
+    if (ticketNumber === undefined) {
+      continue;
+    }
+
+    const ticketId = ticketIdByKey.get(
+      `${event.raffleId}:${String(ticketNumber)}`,
+    );
+
+    if (ticketId) {
+      event.winnerTicketId = ticketId;
+    }
+  }
 }
 
 async function parseSeedFixture(filePath: string): Promise<SeedPayload> {
@@ -656,6 +743,8 @@ async function parseSeedFixture(filePath: string): Promise<SeedPayload> {
   const raffleEvents = parseRaffleEvents(
     asRecordArray(root, 'raffleEvents', 'seed fixtures'),
   );
+
+  linkWinnerTickets(raffleEvents, tickets);
 
   assertFixtureIntegrity(
     users,

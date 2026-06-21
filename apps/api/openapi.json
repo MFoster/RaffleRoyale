@@ -65,6 +65,29 @@
         ]
       }
     },
+    "/user/{id}/profile": {
+      "get": {
+        "operationId": "UserGetPublicProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "user"
+        ]
+      }
+    },
     "/user/{id}": {
       "get": {
         "operationId": "UserFindOne",
@@ -78,6 +101,37 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "user"
+        ]
+      },
+      "patch": {
+        "operationId": "UserUpdateProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserProfileDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -435,6 +489,10 @@
   "components": {
     "schemas": {
       "CreateUserDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateUserProfileDto": {
         "type": "object",
         "properties": {}
       },

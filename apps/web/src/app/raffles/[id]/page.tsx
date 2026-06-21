@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import WorkspacePremiumRounded from '@mui/icons-material/WorkspacePremiumRounded';
+import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -10,11 +11,13 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
+import AppLink from '@/components/AppLink';
 import ImagePlaceholder from '@/components/ImagePlaceholder';
 import RaffleImageCarousel from '@/components/RaffleImageCarousel';
 import RaffleDetailsActions from '@/components/RaffleDetailsActions';
 import SiteHeader from '@/components/SiteHeader';
 import { royaleTokens } from '@/design-system';
+import { getInitials } from '@/lib/raffleStatus';
 import { raffleFindOne } from '@/generated/clients';
 import {
   getApiErrorMessage,
@@ -37,7 +40,13 @@ type RaffleItemType = 'PHYSICAL' | 'DIGITAL';
 type WinnerEventDetails = {
   id: string;
   winnerTicketNumber: number;
+  winnerDisplayName: string | null;
   winnerEmail: string | null;
+};
+
+type RaffleSeller = {
+  id: string;
+  displayName: string | null;
 };
 
 type RaffleDetails = {
@@ -54,6 +63,7 @@ type RaffleDetails = {
   startTime: string;
   endTime: string;
   createdAt: string;
+  seller: RaffleSeller | null;
   winnerEvent: WinnerEventDetails | null;
 };
 
@@ -168,6 +178,7 @@ function parseRaffle(payload: unknown): RaffleDetails {
 
       const buyer = winnerTicketRecord.buyer;
       let winnerEmail: string | null = null;
+      let winnerDisplayName: string | null = null;
 
       if (
         typeof buyer === 'object' &&
@@ -178,16 +189,48 @@ function parseRaffle(payload: unknown): RaffleDetails {
         if (typeof buyerRecord.email === 'string') {
           winnerEmail = buyerRecord.email;
         }
+        if (
+          typeof buyerRecord.displayName === 'string' &&
+          buyerRecord.displayName.trim().length > 0
+        ) {
+          winnerDisplayName = buyerRecord.displayName;
+        }
       }
 
       return {
         id: eventRecord.id,
         winnerTicketNumber: winnerTicketRecord.ticketNumber,
+        winnerDisplayName,
         winnerEmail,
       };
     }
 
     return null;
+  })();
+
+  const seller = (() => {
+    const raffler = record.raffler;
+    if (
+      typeof raffler !== 'object' ||
+      raffler === null ||
+      Array.isArray(raffler)
+    ) {
+      return null;
+    }
+
+    const rafflerRecord = raffler as Record<string, unknown>;
+    if (typeof rafflerRecord.id !== 'string') {
+      return null;
+    }
+
+    return {
+      id: rafflerRecord.id,
+      displayName:
+        typeof rafflerRecord.displayName === 'string' &&
+        rafflerRecord.displayName.trim().length
+          ? rafflerRecord.displayName
+          : null,
+    };
   })();
 
   return {
@@ -209,6 +252,7 @@ function parseRaffle(payload: unknown): RaffleDetails {
     startTime: record.startTime,
     endTime: record.endTime,
     createdAt: record.createdAt,
+    seller,
     winnerEvent,
   };
 }
@@ -315,7 +359,9 @@ export default async function RaffleDetailsPage({
               const isWinnerState =
                 result.raffle.status === 'COMPLETED' || winnerEvent !== null;
               const winnerDisplayName =
-                winnerEvent?.winnerEmail ?? 'Winner account';
+                winnerEvent?.winnerDisplayName ??
+                winnerEvent?.winnerEmail ??
+                'Winner account';
 
               return (
             <Paper
@@ -402,6 +448,45 @@ export default async function RaffleDetailsPage({
                 <Typography color="text.secondary">
                   {result.raffle.description ?? 'No description has been provided for this raffle.'}
                 </Typography>
+
+                {result.raffle.seller ? (
+                  <Paper
+                    component={AppLink}
+                    href={`/users/${result.raffle.seller.id}`}
+                    variant="outlined"
+                    sx={{
+                      p: 2.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      textDecoration: 'none',
+                      color: 'inherit',
+                      transition: 'border-color 120ms ease, background-color 120ms ease',
+                      '&:hover': {
+                        borderColor: alpha('#5B3DF5', 0.45),
+                        bgcolor: alpha('#5B3DF5', 0.04),
+                      },
+                    }}
+                  >
+                    <Avatar sx={{ bgcolor: 'primary.main', fontWeight: 700 }}>
+                      {getInitials(result.raffle.seller.displayName)}
+                    </Avatar>
+                    <Stack spacing={0.25} sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Listed by
+                      </Typography>
+                      <Typography sx={{ fontWeight: 700 }}>
+                        {result.raffle.seller.displayName ?? 'Raffle host'}
+                      </Typography>
+                    </Stack>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: 'primary.main', fontWeight: 700 }}
+                    >
+                      View profile
+                    </Typography>
+                  </Paper>
+                ) : null}
 
                 <Box
                   sx={{
