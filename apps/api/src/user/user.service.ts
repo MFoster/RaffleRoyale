@@ -213,8 +213,7 @@ export class UserService {
         (ticket) => ticket.ticketNumber,
       );
 
-      const winnerTicket =
-        transaction.raffle.events[0]?.winnerTicket ?? null;
+      const winnerTicket = transaction.raffle.events[0]?.winnerTicket ?? null;
       const winnerTicketNumber = winnerTicket?.ticketNumber ?? null;
 
       let outcome: TicketOutcome = 'PENDING';

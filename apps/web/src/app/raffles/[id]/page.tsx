@@ -16,6 +16,7 @@ import ImagePlaceholder from '@/components/ImagePlaceholder';
 import RaffleImageCarousel from '@/components/RaffleImageCarousel';
 import RaffleDetailsActions from '@/components/RaffleDetailsActions';
 import SiteHeader from '@/components/SiteHeader';
+import WinnerDrawProof, { type DrawProofView } from '@/components/WinnerDrawProof';
 import { royaleTokens } from '@/design-system';
 import { getInitials } from '@/lib/raffleStatus';
 import { raffleFindOne } from '@/generated/clients';
@@ -32,6 +33,7 @@ type RaffleStatus =
   | 'ACTIVE'
   | 'SOLD_OUT'
   | 'EXPIRED'
+  | 'PENDING_DRAW'
   | 'DISBANDED'
   | 'COMPLETED';
 
@@ -47,6 +49,14 @@ type WinnerEventDetails = {
 type RaffleSeller = {
   id: string;
   displayName: string | null;
+};
+
+type DrawCommitment = {
+  beaconRound: number;
+  scheme: string | null;
+  chainHash: string | null;
+  committedAt: string | null;
+  availableAt: string | null;
 };
 
 type RaffleDetails = {
@@ -65,6 +75,8 @@ type RaffleDetails = {
   createdAt: string;
   seller: RaffleSeller | null;
   winnerEvent: WinnerEventDetails | null;
+  drawProof: DrawProofView | null;
+  drawCommitment: DrawCommitment | null;
 };
 
 type FetchRaffleResult =
@@ -77,6 +89,7 @@ const statusLabelByValue: Record<RaffleStatus, string> = {
   ACTIVE: 'Active',
   SOLD_OUT: 'Sold out',
   EXPIRED: 'Expired',
+  PENDING_DRAW: 'Drawing winner',
   DISBANDED: 'Disbanded',
   COMPLETED: 'Completed',
 };
@@ -89,6 +102,7 @@ const statusColorByValue: Record<
   ACTIVE: 'primary',
   SOLD_OUT: 'tertiary',
   EXPIRED: 'neutral',
+  PENDING_DRAW: 'primary',
   DISBANDED: 'secondary',
   COMPLETED: 'tertiary',
 };
@@ -99,6 +113,7 @@ function parseRaffleStatus(value: unknown): RaffleStatus | null {
     value === 'ACTIVE' ||
     value === 'SOLD_OUT' ||
     value === 'EXPIRED' ||
+    value === 'PENDING_DRAW' ||
     value === 'DISBANDED' ||
     value === 'COMPLETED'
   ) {
@@ -114,6 +129,101 @@ function parseRaffleItemType(value: unknown): RaffleItemType | null {
   }
 
   return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function findEventMetadata(
+  events: unknown,
+  eventType: string,
+): Record<string, unknown> | null {
+  if (!Array.isArray(events)) {
+    return null;
+  }
+  for (const event of events) {
+    const eventRecord = asRecord(event);
+    if (!eventRecord || eventRecord.eventType !== eventType) {
+      continue;
+    }
+    const metadata = asRecord(eventRecord.metadata);
+    if (metadata) {
+      return metadata;
+    }
+  }
+  return null;
+}
+
+function parseDrawProof(events: unknown, raffleId: string): DrawProofView | null {
+  const metadata = findEventMetadata(events, 'WINNER_SELECTED');
+  if (!metadata) {
+    return null;
+  }
+
+  const beacon = asRecord(metadata.beacon);
+  const derivation = asRecord(metadata.derivation);
+  if (!beacon || !derivation) {
+    // Legacy winners (pre commit-reveal) have no verifiable proof to render.
+    return null;
+  }
+
+  if (
+    typeof beacon.chainHash !== 'string' ||
+    typeof beacon.scheme !== 'string' ||
+    typeof beacon.round !== 'number' ||
+    typeof beacon.randomness !== 'string' ||
+    typeof beacon.signature !== 'string' ||
+    typeof beacon.publicKey !== 'string' ||
+    typeof derivation.seed !== 'string' ||
+    typeof derivation.digest !== 'string' ||
+    typeof metadata.ticketCount !== 'number' ||
+    typeof metadata.winnerIndex !== 'number' ||
+    typeof metadata.winnerTicketNumber !== 'number' ||
+    typeof metadata.algorithm !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    raffleId,
+    algorithm: metadata.algorithm,
+    ticketCount: metadata.ticketCount,
+    winnerIndex: metadata.winnerIndex,
+    winnerTicketNumber: metadata.winnerTicketNumber,
+    beacon: {
+      chainHash: beacon.chainHash,
+      scheme: beacon.scheme,
+      round: beacon.round,
+      randomness: beacon.randomness,
+      signature: beacon.signature,
+      publicKey: beacon.publicKey,
+    },
+    derivation: {
+      seed: derivation.seed,
+      digest: derivation.digest,
+    },
+  };
+}
+
+function parseDrawCommitment(events: unknown): DrawCommitment | null {
+  const metadata = findEventMetadata(events, 'DRAW_COMMITTED');
+  if (!metadata || typeof metadata.beaconRound !== 'number') {
+    return null;
+  }
+
+  return {
+    beaconRound: metadata.beaconRound,
+    scheme: typeof metadata.scheme === 'string' ? metadata.scheme : null,
+    chainHash: typeof metadata.chainHash === 'string' ? metadata.chainHash : null,
+    committedAt:
+      typeof metadata.committedAt === 'string' ? metadata.committedAt : null,
+    availableAt:
+      typeof metadata.availableAt === 'string' ? metadata.availableAt : null,
+  };
 }
 
 function parseRaffle(payload: unknown): RaffleDetails {
@@ -254,6 +364,8 @@ function parseRaffle(payload: unknown): RaffleDetails {
     createdAt: record.createdAt,
     seller,
     winnerEvent,
+    drawProof: parseDrawProof(record.events, record.id),
+    drawCommitment: parseDrawCommitment(record.events),
   };
 }
 
@@ -430,6 +542,41 @@ export default async function RaffleDetailsPage({
                       </Typography>
                     )}
                   </Paper>
+                ) : null}
+
+                {result.raffle.status === 'PENDING_DRAW' &&
+                result.raffle.drawCommitment ? (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 3,
+                      borderColor: alpha('#5B3DF5', 0.32),
+                      bgcolor: alpha('#5B3DF5', 0.06),
+                    }}
+                  >
+                    <Stack spacing={1}>
+                      <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: '0.08em' }}>
+                        Drawing the winner
+                      </Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                        Committed to drand round{' '}
+                        {String(result.raffle.drawCommitment.beaconRound)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        We have locked in a future public randomness round
+                        {result.raffle.drawCommitment.availableAt
+                          ? `, published around ${formatDateLabel(result.raffle.drawCommitment.availableAt)}`
+                          : ''}
+                        . The winner will be derived from its signature the moment
+                        it is released — provably chosen before the randomness
+                        even existed.
+                      </Typography>
+                    </Stack>
+                  </Paper>
+                ) : null}
+
+                {result.raffle.drawProof ? (
+                  <WinnerDrawProof proof={result.raffle.drawProof} />
                 ) : null}
 
                 {result.raffle.imageUrls.length > 0 ? (

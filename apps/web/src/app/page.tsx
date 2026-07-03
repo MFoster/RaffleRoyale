@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import AddBoxRounded from '@mui/icons-material/AddBoxRounded';
+import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded';
 import AutorenewRounded from '@mui/icons-material/AutorenewRounded';
 import ConfirmationNumberRounded from '@mui/icons-material/ConfirmationNumberRounded';
 import Inventory2Rounded from '@mui/icons-material/Inventory2Rounded';
@@ -8,12 +9,14 @@ import StorefrontRounded from '@mui/icons-material/StorefrontRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
 import CardContent from '@mui/material/CardContent';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import EnhancedHomepageRaffles from '@/components/home/EnhancedHomepageRaffles';
 import { alpha } from '@mui/material/styles';
+import AppLink from '@/components/AppLink';
 import PageContainer from '@/components/layout/PageContainer';
 import Section from '@/components/layout/Section';
 import SectionHeading from '@/components/layout/SectionHeading';
@@ -77,6 +80,7 @@ const howItWorksSteps = [
       'Create a listing, define ticket count, and set price in a format buyers can scan quickly.',
     icon: AddBoxRounded,
     tone: 'primary',
+    href: '/how-it-works/list-a-raffle',
   },
   {
     step: '02',
@@ -85,6 +89,7 @@ const howItWorksSteps = [
       'Participants browse live listings, review progress, and purchase entries with clear visibility.',
     icon: ConfirmationNumberRounded,
     tone: 'secondary',
+    href: '/how-it-works/buy-tickets',
   },
   {
     step: '03',
@@ -93,6 +98,7 @@ const howItWorksSteps = [
       'Raffles transition through explicit statuses so buyers and sellers can follow the result.',
     icon: AutorenewRounded,
     tone: 'tertiary',
+    href: '/how-it-works/track-outcome',
   },
 ] as const;
 
@@ -380,37 +386,49 @@ export default async function Home() {
               />
 
               <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' } }}>
-                {howItWorksSteps.map(({ step, title, description, icon: Icon, tone }) => {
+                {howItWorksSteps.map(({ step, title, description, icon: Icon, tone, href }) => {
                   const accent = toneColorByValue[tone];
 
                   return (
                     <Card key={title} sx={{ borderColor: alpha(accent, 0.28) }}>
-                      <CardContent sx={{ p: { xs: 4, md: 5 } }}>
-                        <Stack spacing={3}>
-                          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="overline" sx={{ color: accent, fontWeight: 700, letterSpacing: '0.08em' }}>
-                              Step {step}
-                            </Typography>
-                            <Box
-                              sx={{
-                                width: 46,
-                                height: 46,
-                                display: 'grid',
-                                placeItems: 'center',
-                                borderRadius: '50%',
-                                bgcolor: alpha(accent, 0.13),
-                                color: accent,
-                                border: '1px solid',
-                                borderColor: alpha(accent, 0.26),
-                              }}
-                            >
-                              <Icon />
-                            </Box>
+                      <CardActionArea
+                        component={AppLink}
+                        href={href}
+                        sx={{ height: '100%', borderRadius: 'inherit' }}
+                      >
+                        <CardContent sx={{ p: { xs: 4, md: 5 } }}>
+                          <Stack spacing={3}>
+                            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="overline" sx={{ color: accent, fontWeight: 700, letterSpacing: '0.08em' }}>
+                                Step {step}
+                              </Typography>
+                              <Box
+                                sx={{
+                                  width: 46,
+                                  height: 46,
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  borderRadius: '50%',
+                                  bgcolor: alpha(accent, 0.13),
+                                  color: accent,
+                                  border: '1px solid',
+                                  borderColor: alpha(accent, 0.26),
+                                }}
+                              >
+                                <Icon />
+                              </Box>
+                            </Stack>
+                            <Typography variant="h5">{title}</Typography>
+                            <Typography color="text.secondary">{description}</Typography>
+                            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', color: accent, fontWeight: 600 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                Learn more
+                              </Typography>
+                              <ArrowForwardRounded sx={{ fontSize: 18 }} />
+                            </Stack>
                           </Stack>
-                          <Typography variant="h5">{title}</Typography>
-                          <Typography color="text.secondary">{description}</Typography>
-                        </Stack>
-                      </CardContent>
+                        </CardContent>
+                      </CardActionArea>
                     </Card>
                   );
                 })}

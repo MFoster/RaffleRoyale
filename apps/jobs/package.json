@@ -19,6 +19,7 @@
     "@aws-sdk/client-sqs": "^3",
     "@raffleroyale/db": "0.1.0",
     "@raffleroyale/queue-signature": "0.1.0",
+    "@raffleroyale/raffle-draw": "0.1.0",
     "@prisma/client": "^6.16.2",
     "bcryptjs": "^3.0.3",
     "dotenv": "^16.6.1",

@@ -11,7 +11,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { Raffle, RaffleEvent } from '@prisma/client';
+import { RaffleEvent } from '@prisma/client';
 import { CurrentAuth } from '../auth/current-auth.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
@@ -24,6 +24,7 @@ import {
   MAX_RAFFLE_IMAGE_SIZE_BYTES,
   MAX_RAFFLE_IMAGE_UPLOADS,
   RaffleDetail,
+  RaffleSummary,
   RaffleService,
 } from './raffle.service';
 
@@ -42,7 +43,7 @@ export class RaffleController {
   create(
     @Body() createRaffleDto: CreateRaffleDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<Raffle> {
+  ): Promise<RaffleSummary> {
     if (auth.role !== 'ADMIN' && auth.userId !== createRaffleDto.rafflerId) {
       throw new ForbiddenException('Cannot create raffle for another user');
     }
@@ -73,7 +74,7 @@ export class RaffleController {
 
   @Get()
   @Public()
-  findAll(): Promise<Raffle[]> {
+  findAll(): Promise<RaffleSummary[]> {
     return this.raffleService.findAll();
   }
 

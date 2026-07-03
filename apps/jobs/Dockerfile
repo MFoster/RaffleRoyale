@@ -11,12 +11,14 @@ COPY package.json package-lock.json ./
 COPY apps/jobs/package.json apps/jobs/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/queue-signature/package.json packages/queue-signature/package.json
+COPY packages/raffle-draw/package.json packages/raffle-draw/package.json
 RUN --mount=type=cache,target=/root/.npm npm ci --workspace jobs --include-workspace-root=false
 
 FROM deps AS dev
 ENV NODE_ENV=development
 COPY packages/db/prisma packages/db/prisma
 COPY packages/queue-signature packages/queue-signature
+COPY packages/raffle-draw packages/raffle-draw
 ENTRYPOINT ["node_modules/.bin/tsx", "apps/jobs/src/index.ts"]
 CMD ["bash"]
 
@@ -26,6 +28,7 @@ COPY apps/jobs/tsconfig.json apps/jobs/tsconfig.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/db/prisma packages/db/prisma
 COPY packages/queue-signature packages/queue-signature
+COPY packages/raffle-draw packages/raffle-draw
 RUN npm run prisma:generate -w jobs
 RUN npm run build -w jobs
 
@@ -34,6 +37,7 @@ COPY package.json package-lock.json ./
 COPY apps/jobs/package.json apps/jobs/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/queue-signature/package.json packages/queue-signature/package.json
+COPY packages/raffle-draw/package.json packages/raffle-draw/package.json
 COPY packages/db/prisma packages/db/prisma
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --workspace jobs --include-workspace-root=false
 RUN npm run prisma:generate -w jobs
@@ -45,6 +49,7 @@ COPY package.json package-lock.json ./
 COPY apps/jobs/package.json apps/jobs/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/queue-signature packages/queue-signature
+COPY packages/raffle-draw packages/raffle-draw
 COPY packages/db/prisma packages/db/prisma
 COPY --from=build /workspace/apps/jobs/dist apps/jobs/dist
 COPY apps/jobs/entrypoint.sh ./
