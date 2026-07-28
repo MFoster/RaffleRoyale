@@ -172,8 +172,14 @@ export class UserService {
         },
         select: publicUserSelect,
       });
-    } catch {
-      throw new NotFoundException(`User ${id} not found`);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException(`User ${id} not found`);
+      }
+      throw error;
     }
   }
 
