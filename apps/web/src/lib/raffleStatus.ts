@@ -2,6 +2,7 @@ export type RaffleStatus =
   | 'DRAFT'
   | 'ACTIVE'
   | 'SOLD_OUT'
+  | 'PENDING_DRAW'
   | 'EXPIRED'
   | 'DISBANDED'
   | 'COMPLETED';
@@ -10,6 +11,7 @@ export const RAFFLE_STATUS_VALUES: RaffleStatus[] = [
   'DRAFT',
   'ACTIVE',
   'SOLD_OUT',
+  'PENDING_DRAW',
   'EXPIRED',
   'DISBANDED',
   'COMPLETED',
@@ -33,6 +35,7 @@ export const RAFFLE_STATUS_LABELS: Record<RaffleStatus, string> = {
   DRAFT: 'Draft',
   ACTIVE: 'Active',
   SOLD_OUT: 'Sold out',
+  PENDING_DRAW: 'Drawing winner',
   EXPIRED: 'Expired',
   DISBANDED: 'Disbanded',
   COMPLETED: 'Completed',

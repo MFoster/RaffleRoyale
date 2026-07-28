@@ -18,7 +18,14 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic';
 
-type RaffleStatus = 'DRAFT' | 'ACTIVE' | 'SOLD_OUT' | 'EXPIRED' | 'DISBANDED' | 'COMPLETED';
+type RaffleStatus =
+  | 'DRAFT'
+  | 'ACTIVE'
+  | 'SOLD_OUT'
+  | 'PENDING_DRAW'
+  | 'EXPIRED'
+  | 'DISBANDED'
+  | 'COMPLETED';
 type RaffleItemType = 'PHYSICAL' | 'DIGITAL';
 type MarketplaceRaffleData = RaffleData & { itemType: RaffleItemType };
 
@@ -31,6 +38,7 @@ function parseRaffleStatus(value: unknown): RaffleStatus | null {
     value === 'DRAFT' ||
     value === 'ACTIVE' ||
     value === 'SOLD_OUT' ||
+    value === 'PENDING_DRAW' ||
     value === 'EXPIRED' ||
     value === 'DISBANDED' ||
     value === 'COMPLETED'

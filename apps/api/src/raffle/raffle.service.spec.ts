@@ -137,8 +137,16 @@ describe('RaffleService', () => {
       randomness: beaconRandomness,
     }),
   };
+  const mockExpirationScheduler = {
+    createExpirationSchedule: jest.fn().mockResolvedValue(true),
+    deleteExpirationSchedule: jest.fn().mockResolvedValue(undefined),
+  };
 
-  const service = new RaffleService(mockPrisma as never, mockBeacon as never);
+  const service = new RaffleService(
+    mockPrisma as never,
+    mockBeacon as never,
+    mockExpirationScheduler as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -241,6 +249,10 @@ describe('RaffleService', () => {
     mockPrisma.pendingRaffleImageUpload.deleteMany.mockResolvedValue({
       count: 0,
     });
+    mockExpirationScheduler.createExpirationSchedule.mockResolvedValue(true);
+    mockExpirationScheduler.deleteExpirationSchedule.mockResolvedValue(
+      undefined,
+    );
   });
 
   it('claims pending uploads owned by the requester during raffle creation', async () => {
@@ -351,6 +363,71 @@ describe('RaffleService', () => {
         rafflerId,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('creates an expiration schedule for active raffles', async () => {
+    const endTime = new Date(Date.now() + 60_000).toISOString();
+    mockTx.raffle.create.mockResolvedValue({
+      id: raffleId,
+      rafflerId,
+      title: 'Scheduled raffle',
+      description: null,
+      imageUrls: [],
+      itemType: ItemType.PHYSICAL,
+      totalTickets: 10,
+      ticketPrice: 500,
+      ticketsSold: 0,
+      minSellThrough: null,
+      status: RaffleStatus.ACTIVE,
+      startTime: new Date(),
+      endTime: new Date(endTime),
+      drawBeaconRound: null,
+      drawBeaconChainHash: null,
+      drawScheme: null,
+      drawCommittedAt: null,
+      drawAvailableAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await service.create(
+      {
+        rafflerId,
+        title: 'Scheduled raffle',
+        totalTickets: 10,
+        ticketPrice: 500,
+        endTime,
+        status: RaffleStatus.ACTIVE,
+      },
+      rafflerId,
+    );
+
+    expect(
+      mockExpirationScheduler.createExpirationSchedule,
+    ).toHaveBeenCalledWith(expect.any(String), new Date(endTime));
+  });
+
+  it('removes a created schedule when raffle persistence fails', async () => {
+    const endTime = new Date(Date.now() + 60_000).toISOString();
+    mockPrisma.$transaction.mockRejectedValueOnce(new Error('database failed'));
+
+    await expect(
+      service.create(
+        {
+          rafflerId,
+          title: 'Scheduled raffle',
+          totalTickets: 10,
+          ticketPrice: 500,
+          endTime,
+          status: RaffleStatus.ACTIVE,
+        },
+        rafflerId,
+      ),
+    ).rejects.toThrow('database failed');
+
+    expect(
+      mockExpirationScheduler.deleteExpirationSchedule,
+    ).toHaveBeenCalledWith(expect.any(String));
   });
 
   it('purchases tickets and returns allocation details', async () => {

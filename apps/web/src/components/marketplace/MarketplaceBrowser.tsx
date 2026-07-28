@@ -29,7 +29,15 @@ import SectionHeading from '../layout/SectionHeading';
 import { royaleTokens } from '@/design-system';
 import EnhancedRaffleCard, { type RaffleData } from '../home/EnhancedRaffleCard';
 
-type MarketplaceStatusFilter = 'all' | 'DRAFT' | 'ACTIVE' | 'SOLD_OUT' | 'EXPIRED' | 'DISBANDED' | 'COMPLETED';
+type MarketplaceStatusFilter =
+  | 'all'
+  | 'DRAFT'
+  | 'ACTIVE'
+  | 'SOLD_OUT'
+  | 'PENDING_DRAW'
+  | 'EXPIRED'
+  | 'DISBANDED'
+  | 'COMPLETED';
 type MarketplaceItemTypeFilter = 'all' | 'PHYSICAL' | 'DIGITAL';
 type MarketplaceSortOption = 'ending-soon' | 'newest' | 'most-sold' | 'price-low' | 'price-high';
 type MarketplaceRaffleData = RaffleData & {
@@ -40,6 +48,7 @@ const statusLabelByValue: Record<Exclude<MarketplaceStatusFilter, 'all'>, string
   DRAFT: 'Draft',
   ACTIVE: 'Active',
   SOLD_OUT: 'Sold out',
+  PENDING_DRAW: 'Drawing winner',
   EXPIRED: 'Expired',
   DISBANDED: 'Disbanded',
   COMPLETED: 'Completed',

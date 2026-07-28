@@ -31,7 +31,7 @@ export type DrawProofView = {
 const QUICKNET_CHAIN_HASH =
   '52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971';
 
-const TWO_POW_256 = 1n << 256n;
+const TWO_POW_256 = BigInt(1) << BigInt(256);
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
@@ -68,9 +68,9 @@ function uint64BE(value: number): Uint8Array {
 }
 
 function bytesToBigInt(bytes: Uint8Array): bigint {
-  let result = 0n;
+  let result = BigInt(0);
   for (const byte of bytes) {
-    result = (result << 8n) | BigInt(byte);
+    result = (result << BigInt(8)) | BigInt(byte);
   }
   return result;
 }

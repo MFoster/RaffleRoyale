@@ -1,9 +1,6 @@
-export type JobMessage = {
-  id: string;
-  command: string;
-  args?: string[];
-  replyQueueUrl?: string;
-};
+import type { QueueJobMessage } from "@raffleroyale/queue-signature";
+
+export type JobMessage = QueueJobMessage;
 
 export type JobReply = {
   id: string;

@@ -22,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BeaconService } from './beacon.service';
 import { CreateRaffleDto } from './dto/create-raffle.dto';
 import { PurchaseTicketsDto } from './dto/purchase-tickets.dto';
+import { RaffleExpirationScheduler } from './raffle-expiration.scheduler';
 
 export const MAX_RAFFLE_IMAGE_UPLOADS = 3;
 export const MAX_RAFFLE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -223,6 +224,7 @@ export class RaffleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly beacon: BeaconService,
+    private readonly expirationScheduler: RaffleExpirationScheduler,
   ) {}
 
   async uploadImages(
@@ -321,67 +323,84 @@ export class RaffleService {
       );
     }
 
-    return this.prisma.$transaction(
-      async (tx) => {
-        const pendingUploads = await this.getPendingUploadsForCreation(
-          createRaffleDto.imageUrls ?? [],
-          imageUploadOwnerId,
-          tx,
-        );
-
-        const raffle = await tx.raffle.create({
-          data: {
-            rafflerId: createRaffleDto.rafflerId,
-            title: createRaffleDto.title,
-            description: createRaffleDto.description,
-            imageUrls: pendingUploads.map((upload) => upload.urlPath),
-            itemType: createRaffleDto.itemType ?? ItemType.PHYSICAL,
-            totalTickets: createRaffleDto.totalTickets,
-            ticketPrice: createRaffleDto.ticketPrice,
-            minSellThrough: createRaffleDto.minSellThrough,
-            status,
+    const raffleId = randomUUID();
+    const scheduleCreated =
+      status === RaffleStatus.ACTIVE
+        ? await this.expirationScheduler.createExpirationSchedule(
+            raffleId,
             endTime,
-          },
-        });
+          )
+        : false;
 
-        if (pendingUploads.length > 0) {
-          const claimResult = await tx.pendingRaffleImageUpload.updateMany({
-            where: {
-              id: { in: pendingUploads.map((upload) => upload.id) },
-              ownerId: imageUploadOwnerId,
-              consumedAt: null,
-            },
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const pendingUploads = await this.getPendingUploadsForCreation(
+            createRaffleDto.imageUrls ?? [],
+            imageUploadOwnerId,
+            tx,
+          );
+
+          const raffle = await tx.raffle.create({
             data: {
-              raffleId: raffle.id,
-              consumedAt: new Date(),
+              id: raffleId,
+              rafflerId: createRaffleDto.rafflerId,
+              title: createRaffleDto.title,
+              description: createRaffleDto.description,
+              imageUrls: pendingUploads.map((upload) => upload.urlPath),
+              itemType: createRaffleDto.itemType ?? ItemType.PHYSICAL,
+              totalTickets: createRaffleDto.totalTickets,
+              ticketPrice: createRaffleDto.ticketPrice,
+              minSellThrough: createRaffleDto.minSellThrough,
+              status,
+              endTime,
             },
           });
 
-          if (claimResult.count !== pendingUploads.length) {
-            throw new ConflictException(
-              'One or more image uploads were already claimed.',
-            );
+          if (pendingUploads.length > 0) {
+            const claimResult = await tx.pendingRaffleImageUpload.updateMany({
+              where: {
+                id: { in: pendingUploads.map((upload) => upload.id) },
+                ownerId: imageUploadOwnerId,
+                consumedAt: null,
+              },
+              data: {
+                raffleId: raffle.id,
+                consumedAt: new Date(),
+              },
+            });
+
+            if (claimResult.count !== pendingUploads.length) {
+              throw new ConflictException(
+                'One or more image uploads were already claimed.',
+              );
+            }
           }
-        }
 
-        await tx.raffleEvent.create({
-          data: {
-            raffleId: raffle.id,
-            eventType: 'CREATED',
-            metadata: {
-              status,
-              totalTickets: raffle.totalTickets,
-              ticketPrice: raffle.ticketPrice,
+          await tx.raffleEvent.create({
+            data: {
+              raffleId: raffle.id,
+              eventType: 'CREATED',
+              metadata: {
+                status,
+                totalTickets: raffle.totalTickets,
+                ticketPrice: raffle.ticketPrice,
+              },
             },
-          },
-        });
+          });
 
-        return serializeRaffle(raffle);
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      },
-    );
+          return serializeRaffle(raffle);
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
+    } catch (error) {
+      if (scheduleCreated) {
+        await this.expirationScheduler.deleteExpirationSchedule(raffleId);
+      }
+      throw error;
+    }
   }
 
   async findAll(): Promise<RaffleSummary[]> {

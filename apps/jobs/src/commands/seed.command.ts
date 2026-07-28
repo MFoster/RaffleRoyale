@@ -10,6 +10,15 @@ import {
   RaffleStatus as RaffleStatusEnum,
   TransactionStatus as TransactionStatusEnum,
 } from '@prisma/client';
+import {
+  currentRoundAt,
+  DEFAULT_DRAND_BASE_URL,
+  HttpBeaconClient,
+  QUICKNET_CHAIN_HASH,
+  revealWinnerProof,
+  timeOfRound,
+  type BeaconChainInfo,
+} from '@raffleroyale/raffle-draw';
 import { hash as hashPassword } from 'bcryptjs';
 import { load as loadYaml } from 'js-yaml';
 import type { JobCommand } from './types';
@@ -200,6 +209,7 @@ function readOptionalDate(
   source: Record<string, unknown>,
   key: string,
   context: string,
+  shiftMs = 0,
 ): Date | undefined {
   const value = source[key];
 
@@ -217,7 +227,7 @@ function readOptionalDate(
     throw new Error(`${context}.${key} must be a valid ISO date string.`);
   }
 
-  return parsed;
+  return new Date(parsed.getTime() + shiftMs);
 }
 
 function parseEnumValue<T extends Record<string, string>>(
@@ -467,14 +477,17 @@ type SeedUserFixture = Omit<Prisma.UserCreateManyInput, 'passwordHash'> & {
   password: string;
 };
 
-function parseUsers(rows: Record<string, unknown>[]): SeedUserFixture[] {
+function parseUsers(
+  rows: Record<string, unknown>[],
+  dateShiftMs = 0,
+): SeedUserFixture[] {
   return rows.map((row, index) => {
     const context = `users[${String(index)}]`;
     const phone = readOptionalNullableString(row, 'phone', context);
     const displayName = readOptionalNullableString(row, 'displayName', context);
     const bio = readOptionalNullableString(row, 'bio', context);
-    const createdAt = readOptionalDate(row, 'createdAt', context);
-    const updatedAt = readOptionalDate(row, 'updatedAt', context);
+    const createdAt = readOptionalDate(row, 'createdAt', context, dateShiftMs);
+    const updatedAt = readOptionalDate(row, 'updatedAt', context, dateShiftMs);
     const kycStatus = parseOptionalEnumValue(
       row,
       'kycStatus',
@@ -497,16 +510,19 @@ function parseUsers(rows: Record<string, unknown>[]): SeedUserFixture[] {
   });
 }
 
-function parseRaffles(rows: Record<string, unknown>[]): Prisma.RaffleCreateManyInput[] {
+function parseRaffles(
+  rows: Record<string, unknown>[],
+  dateShiftMs = 0,
+): Prisma.RaffleCreateManyInput[] {
   return rows.map((row, index) => {
     const context = `raffles[${String(index)}]`;
     const description = readOptionalNullableString(row, 'description', context);
     const imageUrls = readOptionalStringArray(row, 'imageUrls', context);
     const minSellThrough = readOptionalNullableInt(row, 'minSellThrough', context);
-    const startTime = readOptionalDate(row, 'startTime', context);
-    const endTime = readOptionalDate(row, 'endTime', context);
-    const createdAt = readOptionalDate(row, 'createdAt', context);
-    const updatedAt = readOptionalDate(row, 'updatedAt', context);
+    const startTime = readOptionalDate(row, 'startTime', context, dateShiftMs);
+    const endTime = readOptionalDate(row, 'endTime', context, dateShiftMs);
+    const createdAt = readOptionalDate(row, 'createdAt', context, dateShiftMs);
+    const updatedAt = readOptionalDate(row, 'updatedAt', context, dateShiftMs);
 
     if (!endTime) {
       throw new Error(`${context}.endTime is required.`);
@@ -554,10 +570,11 @@ function parseRaffles(rows: Record<string, unknown>[]): Prisma.RaffleCreateManyI
 
 function parseTransactions(
   rows: Record<string, unknown>[],
+  dateShiftMs = 0,
 ): Prisma.TransactionCreateManyInput[] {
   return rows.map((row, index) => {
     const context = `transactions[${String(index)}]`;
-    const createdAt = readOptionalDate(row, 'createdAt', context);
+    const createdAt = readOptionalDate(row, 'createdAt', context, dateShiftMs);
     const stripePaymentIntentId = readOptionalNullableString(
       row,
       'stripePaymentIntentId',
@@ -589,10 +606,13 @@ function parseTransactions(
   });
 }
 
-function parseTickets(rows: Record<string, unknown>[]): Prisma.TicketCreateManyInput[] {
+function parseTickets(
+  rows: Record<string, unknown>[],
+  dateShiftMs = 0,
+): Prisma.TicketCreateManyInput[] {
   return rows.map((row, index) => {
     const context = `tickets[${String(index)}]`;
-    const createdAt = readOptionalDate(row, 'createdAt', context);
+    const createdAt = readOptionalDate(row, 'createdAt', context, dateShiftMs);
 
     return {
       id: readRequiredString(row, 'id', context),
@@ -605,10 +625,13 @@ function parseTickets(rows: Record<string, unknown>[]): Prisma.TicketCreateManyI
   });
 }
 
-function parsePayouts(rows: Record<string, unknown>[]): Prisma.PayoutCreateManyInput[] {
+function parsePayouts(
+  rows: Record<string, unknown>[],
+  dateShiftMs = 0,
+): Prisma.PayoutCreateManyInput[] {
   return rows.map((row, index) => {
     const context = `payouts[${String(index)}]`;
-    const createdAt = readOptionalDate(row, 'createdAt', context);
+    const createdAt = readOptionalDate(row, 'createdAt', context, dateShiftMs);
     const stripeTransferId = readOptionalNullableString(
       row,
       'stripeTransferId',
@@ -636,10 +659,11 @@ function parsePayouts(rows: Record<string, unknown>[]): Prisma.PayoutCreateManyI
 
 function parseRaffleEvents(
   rows: Record<string, unknown>[],
+  dateShiftMs = 0,
 ): Prisma.RaffleEventCreateManyInput[] {
   return rows.map((row, index) => {
     const context = `raffleEvents[${String(index)}]`;
-    const createdAt = readOptionalDate(row, 'createdAt', context);
+    const createdAt = readOptionalDate(row, 'createdAt', context, dateShiftMs);
     const metadata = readOptionalMetadata(row, 'metadata', context);
     const winnerTicketId = readOptionalNullableString(
       row,
@@ -732,16 +756,32 @@ async function parseSeedFixture(filePath: string): Promise<SeedPayload> {
   }
 
   const root = asRecord(parsedFixture, 'seed fixtures');
+  const dateAnchor = readOptionalDate(root, 'dateAnchor', 'seed fixtures', 0);
+  const dateShiftMs = dateAnchor ? Date.now() - dateAnchor.getTime() : 0;
 
-  const users = parseUsers(asRecordArray(root, 'users', 'seed fixtures'));
-  const raffles = parseRaffles(asRecordArray(root, 'raffles', 'seed fixtures'));
+  const users = parseUsers(
+    asRecordArray(root, 'users', 'seed fixtures'),
+    dateShiftMs,
+  );
+  const raffles = parseRaffles(
+    asRecordArray(root, 'raffles', 'seed fixtures'),
+    dateShiftMs,
+  );
   const transactions = parseTransactions(
     asRecordArray(root, 'transactions', 'seed fixtures'),
+    dateShiftMs,
   );
-  const tickets = parseTickets(asRecordArray(root, 'tickets', 'seed fixtures'));
-  const payouts = parsePayouts(asRecordArray(root, 'payouts', 'seed fixtures'));
+  const tickets = parseTickets(
+    asRecordArray(root, 'tickets', 'seed fixtures'),
+    dateShiftMs,
+  );
+  const payouts = parsePayouts(
+    asRecordArray(root, 'payouts', 'seed fixtures'),
+    dateShiftMs,
+  );
   const raffleEvents = parseRaffleEvents(
     asRecordArray(root, 'raffleEvents', 'seed fixtures'),
+    dateShiftMs,
   );
 
   linkWinnerTickets(raffleEvents, tickets);
@@ -818,6 +858,172 @@ async function seedTables(
   });
 }
 
+function metadataHasBeaconProof(metadata: unknown): boolean {
+  return isRecord(metadata) && isRecord(metadata.beacon);
+}
+
+/**
+ * Upgrade seeded COMPLETED raffles to real, re-verifiable winners using the
+ * same drand commit-reveal protocol the background sweep uses. Fixtures record
+ * placeholder winners; this derives the winner from a published beacon round so
+ * the raffle page can prove the draw was fair. Runs best-effort: if the beacon
+ * is unreachable the seed still succeeds with the placeholder metadata.
+ */
+async function drawSeededWinners(prisma: PrismaClient): Promise<number> {
+  const beacon = new HttpBeaconClient({
+    baseUrl: process.env.DRAND_BASE_URL ?? DEFAULT_DRAND_BASE_URL,
+    chainHash: process.env.DRAND_CHAIN_HASH ?? QUICKNET_CHAIN_HASH,
+  });
+
+  let info: BeaconChainInfo;
+  try {
+    info = await beacon.getChainInfo();
+  } catch (error) {
+    console.log(
+      '⚠️  drand beacon unavailable; seeded winners keep placeholder metadata:',
+      error instanceof Error ? error.message : error,
+    );
+    return 0;
+  }
+
+  const completedRaffles = await prisma.raffle.findMany({
+    where: { status: RaffleStatusEnum.COMPLETED },
+    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  let drawn = 0;
+  for (const { id: raffleId } of completedRaffles) {
+    try {
+      const upgraded = await drawSeededWinner(prisma, beacon, info, raffleId);
+      if (upgraded) {
+        drawn += 1;
+      }
+    } catch (error) {
+      console.log(
+        `⚠️  Failed to attach draw proof for raffle ${raffleId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  return drawn;
+}
+
+async function drawSeededWinner(
+  prisma: PrismaClient,
+  beacon: HttpBeaconClient,
+  info: BeaconChainInfo,
+  raffleId: string,
+): Promise<boolean> {
+  const existingWinner = await prisma.raffleEvent.findFirst({
+    where: { raffleId, eventType: RaffleEventTypeEnum.WINNER_SELECTED },
+    select: { metadata: true },
+  });
+  if (existingWinner && metadataHasBeaconProof(existingWinner.metadata)) {
+    return false;
+  }
+
+  const ticketCount = await prisma.ticket.count({ where: { raffleId } });
+  if (ticketCount <= 0) {
+    return false;
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const round = Math.max(1, currentRoundAt(info, nowSeconds) - 1);
+  const beaconRound = await beacon.getRound(round);
+  const proof = revealWinnerProof({ raffleId, ticketCount, round: beaconRound, info });
+
+  const availableAt = new Date(timeOfRound(info, round) * 1000);
+  const committedAt = new Date(availableAt.getTime() - info.period * 1000);
+
+  return prisma.$transaction(
+    async (tx) => {
+      const winnerTicket = await tx.ticket.findFirst({
+        where: { raffleId },
+        orderBy: { ticketNumber: 'asc' },
+        skip: proof.winnerIndex,
+        select: { id: true, ticketNumber: true },
+      });
+      if (!winnerTicket) {
+        return false;
+      }
+
+      await tx.raffleEvent.deleteMany({
+        where: {
+          raffleId,
+          eventType: {
+            in: [
+              RaffleEventTypeEnum.WINNER_SELECTED,
+              RaffleEventTypeEnum.DRAW_COMMITTED,
+            ],
+          },
+        },
+      });
+
+      await tx.raffle.update({
+        where: { id: raffleId },
+        data: {
+          drawBeaconRound: BigInt(proof.round),
+          drawBeaconChainHash: proof.chainHash,
+          drawScheme: proof.scheme,
+          drawCommittedAt: committedAt,
+          drawAvailableAt: availableAt,
+        },
+      });
+
+      await tx.raffleEvent.create({
+        data: {
+          raffleId,
+          eventType: RaffleEventTypeEnum.DRAW_COMMITTED,
+          createdAt: committedAt,
+          metadata: {
+            algorithm: proof.algorithm,
+            chainHash: proof.chainHash,
+            scheme: proof.scheme,
+            beaconRound: proof.round,
+            committedAt: committedAt.toISOString(),
+            availableAt: availableAt.toISOString(),
+            source: 'jobs-seed-v1',
+          },
+        },
+      });
+
+      await tx.raffleEvent.create({
+        data: {
+          raffleId,
+          eventType: RaffleEventTypeEnum.WINNER_SELECTED,
+          winnerTicketId: winnerTicket.id,
+          createdAt: availableAt,
+          metadata: {
+            winnerTicketId: winnerTicket.id,
+            winnerTicketNumber: winnerTicket.ticketNumber,
+            ticketCount,
+            winnerIndex: proof.winnerIndex,
+            algorithm: proof.algorithm,
+            beacon: {
+              chainHash: proof.chainHash,
+              scheme: proof.scheme,
+              round: proof.round,
+              randomness: proof.randomness,
+              signature: proof.signature,
+              publicKey: proof.publicKey,
+            },
+            derivation: {
+              seed: proof.seed,
+              digest: proof.digest,
+            },
+            source: 'jobs-seed-v1',
+          },
+        },
+      });
+
+      return true;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}
+
 export const seedCommand: JobCommand = {
   name: 'seed',
   description:
@@ -833,11 +1039,14 @@ export const seedCommand: JobCommand = {
     await clearTables(prisma);
     await seedTables(prisma, payload);
 
+    const drawnCount = await drawSeededWinners(prisma);
+
     console.log('Seed completed from fixture file:');
     console.log(`  ${fixturePath}`);
     console.log(
       `Rows inserted: users=${payload.users.length}, raffles=${payload.raffles.length}, transactions=${payload.transactions.length}, tickets=${payload.tickets.length}, payouts=${payload.payouts.length}, raffleEvents=${payload.raffleEvents.length}`,
     );
     console.log(`Copied raffle product images: ${copiedImageCount}`);
+    console.log(`Attached commit-reveal draw proofs: ${drawnCount}`);
   },
 };

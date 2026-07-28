@@ -1,6 +1,51 @@
 const { createHash } = require('node:crypto');
 
 const SIGNATURE_FIELD = 'sig';
+const JOB_COMMANDS = Object.freeze({
+  EXPIRE_RAFFLE: 'expire-raffle',
+  CLEANUP_PENDING_IMAGES: 'cleanup-pending-images',
+  RECONCILE_EXPIRED_RAFFLES: 'reconcile-expired-raffles',
+});
+
+function createQueueJobMessage({ id, command, args, replyQueueUrl }) {
+  if (typeof id !== 'string' || id.trim().length === 0) {
+    throw new Error('Queue job id must be a non-empty string');
+  }
+
+  if (typeof command !== 'string' || command.trim().length === 0) {
+    throw new Error('Queue job command must be a non-empty string');
+  }
+
+  if (
+    args !== undefined &&
+    (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string'))
+  ) {
+    throw new Error('Queue job args must be an array of strings when provided');
+  }
+
+  if (replyQueueUrl !== undefined && typeof replyQueueUrl !== 'string') {
+    throw new Error('Queue job replyQueueUrl must be a string when provided');
+  }
+
+  return {
+    id,
+    command,
+    ...(args ? { args: [...args] } : {}),
+    ...(replyQueueUrl ? { replyQueueUrl } : {}),
+  };
+}
+
+function createRaffleExpirationJob(raffleId) {
+  if (typeof raffleId !== 'string' || raffleId.trim().length === 0) {
+    throw new Error('raffleId must be a non-empty string');
+  }
+
+  return createQueueJobMessage({
+    id: `raffle-expiration:${raffleId}`,
+    command: JOB_COMMANDS.EXPIRE_RAFFLE,
+    args: [raffleId],
+  });
+}
 
 function signQueuePayload(payload, signingKey) {
   if (!signingKey) {
@@ -73,6 +118,9 @@ function sortValue(input) {
 }
 
 module.exports = {
+  JOB_COMMANDS,
+  createQueueJobMessage,
+  createRaffleExpirationJob,
   signQueuePayload,
   verifyQueuePayload,
   parseAndVerifyQueueMessage,

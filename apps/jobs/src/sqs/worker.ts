@@ -1,37 +1,40 @@
-import process from 'node:process';
+import process from "node:process";
 import {
+  ChangeMessageVisibilityCommand,
   DeleteMessageCommand,
   ReceiveMessageCommand,
   SendMessageCommand,
   type Message,
   type SQSClient,
-} from '@aws-sdk/client-sqs';
+} from "@aws-sdk/client-sqs";
 import {
   parseAndVerifyQueueMessage,
   signQueuePayload,
-} from '@raffleroyale/queue-signature';
-import type { PrismaClient } from '@prisma/client';
-import { commandMap } from '../commands';
-import { createPrismaClient } from '../prisma/client';
-import { createSqsClient } from './client';
-import type { JobMessage, JobReply } from './types';
+} from "@raffleroyale/queue-signature";
+import type { PrismaClient } from "@prisma/client";
+import { commandMap } from "../commands";
+import { createPrismaClient } from "../prisma/client";
+import { createSqsClient } from "./client";
+import type { JobMessage, JobReply } from "./types";
 
 class InvalidJobMessageError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'InvalidJobMessageError';
+    this.name = "InvalidJobMessageError";
   }
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown worker error.';
+  return error instanceof Error ? error.message : "Unknown worker error.";
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
+  return error instanceof Error && error.name === "AbortError";
 }
 
-function isInvalidJobMessageError(error: unknown): error is InvalidJobMessageError {
+function isInvalidJobMessageError(
+  error: unknown,
+): error is InvalidJobMessageError {
   return error instanceof InvalidJobMessageError;
 }
 
@@ -45,26 +48,30 @@ function parseJobMessage(body: string, signingKey: string): JobMessage {
 
   const { id, command, args, replyQueueUrl } = parsed;
 
-  if (typeof id !== 'string' || id.trim().length === 0) {
-    throw new InvalidJobMessageError('Job message id must be a non-empty string.');
+  if (typeof id !== "string" || id.trim().length === 0) {
+    throw new InvalidJobMessageError(
+      "Job message id must be a non-empty string.",
+    );
   }
 
-  if (typeof command !== 'string' || command.trim().length === 0) {
-    throw new InvalidJobMessageError('Job message command must be a non-empty string.');
+  if (typeof command !== "string" || command.trim().length === 0) {
+    throw new InvalidJobMessageError(
+      "Job message command must be a non-empty string.",
+    );
   }
 
   if (
     args !== undefined &&
-    (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string'))
+    (!Array.isArray(args) || !args.every((arg) => typeof arg === "string"))
   ) {
     throw new InvalidJobMessageError(
-      'Job message args must be an array of strings when provided.',
+      "Job message args must be an array of strings when provided.",
     );
   }
 
-  if (replyQueueUrl !== undefined && typeof replyQueueUrl !== 'string') {
+  if (replyQueueUrl !== undefined && typeof replyQueueUrl !== "string") {
     throw new InvalidJobMessageError(
-      'Job message replyQueueUrl must be a string when provided.',
+      "Job message replyQueueUrl must be a string when provided.",
     );
   }
 
@@ -76,28 +83,8 @@ function parseJobMessage(body: string, signingKey: string): JobMessage {
   };
 }
 
-function extractReplyContext(body: string | undefined, signingKey: string): Partial<JobMessage> {
-  if (!body) {
-    return {};
-  }
-
-  try {
-    const parsed = parseAndVerifyQueueMessage(body, signingKey);
-
-    return {
-      ...(typeof parsed.id === 'string' ? { id: parsed.id } : {}),
-      ...(typeof parsed.command === 'string' ? { command: parsed.command } : {}),
-      ...(typeof parsed.replyQueueUrl === 'string'
-        ? { replyQueueUrl: parsed.replyQueueUrl }
-        : {}),
-    };
-  } catch {
-    return {};
-  }
-}
-
 function buildReply(
-  jobMessage: Pick<JobMessage, 'id' | 'command'>,
+  jobMessage: Pick<JobMessage, "id" | "command">,
   result: { success: boolean; exitCode: number; error?: string },
 ): JobReply {
   return {
@@ -120,19 +107,19 @@ function createWorkerPrismaClient(): PrismaClient {
   }
 
   console.warn(
-    'DATABASE_URL is not set. Commands that use Prisma will fail until it is configured.',
+    "DATABASE_URL is not set. Commands that use Prisma will fail until it is configured.",
   );
 
   return new Proxy(
     {},
     {
       get(_target, property) {
-        if (property === '$disconnect' || property === '$connect') {
+        if (property === "$disconnect" || property === "$connect") {
           return () => Promise.resolve();
         }
 
         throw new Error(
-          'DATABASE_URL is required for this command. Configure apps/jobs/.env or apps/api/.env before running DB commands.',
+          "DATABASE_URL is required for this command. Configure apps/jobs/.env or apps/api/.env before running DB commands.",
         );
       },
     },
@@ -146,7 +133,7 @@ async function sendReply(
   signingKey: string,
 ): Promise<void> {
   console.log(
-    `Sending ${reply.success ? 'success' : 'failure'} reply for job ${reply.id} to ${queueUrl}`,
+    `Sending ${reply.success ? "success" : "failure"} reply for job ${reply.id} to ${queueUrl}`,
   );
 
   const signedReply = signQueuePayload(reply, signingKey);
@@ -159,54 +146,12 @@ async function sendReply(
   );
 }
 
-async function sendFailureReplyIfConfigured(
-  sqsClient: SQSClient,
-  jobMessage: Partial<JobMessage>,
-  error: string,
-  signingKey: string,
-): Promise<void> {
-  const replyQueueUrl = getReplyQueueUrl(jobMessage);
-
-  if (!replyQueueUrl || !jobMessage.id || !jobMessage.command) {
-    return;
+function resolveVisibilityTimeoutSeconds(): number {
+  const parsed = Number(process.env.JOBS_SQS_VISIBILITY_TIMEOUT_SECONDS);
+  if (!Number.isInteger(parsed) || parsed < 30 || parsed > 43_200) {
+    return 120;
   }
-
-  try {
-    await sendReply(
-      sqsClient,
-      replyQueueUrl,
-      buildReply(jobMessage as Pick<JobMessage, 'id' | 'command'>, {
-        success: false,
-        exitCode: 1,
-        error,
-      }),
-      signingKey,
-    );
-  } catch (replyError) {
-    console.error(
-      `Failed to send failure reply for job ${jobMessage.id}: ${getErrorMessage(replyError)}`,
-    );
-  }
-}
-
-async function deleteMessageIfPossible(
-  sqsClient: SQSClient,
-  queueUrl: string,
-  message: Message,
-): Promise<void> {
-  if (!message.ReceiptHandle) {
-    console.error(
-      `Cannot delete invalid SQS message ${message.MessageId ?? '<unknown>'}: missing receipt handle.`,
-    );
-    return;
-  }
-
-  await sqsClient.send(
-    new DeleteMessageCommand({
-      QueueUrl: queueUrl,
-      ReceiptHandle: message.ReceiptHandle,
-    }),
-  );
+  return parsed;
 }
 
 async function processMessage(
@@ -217,11 +162,10 @@ async function processMessage(
   signingKey: string,
 ): Promise<void> {
   let jobMessage: JobMessage | undefined;
-  const replyContext = extractReplyContext(message.Body, signingKey);
 
   try {
     if (!message.Body) {
-      throw new InvalidJobMessageError('Received SQS message without a body.');
+      throw new InvalidJobMessageError("Received SQS message without a body.");
     }
 
     jobMessage = parseJobMessage(message.Body, signingKey);
@@ -236,14 +180,50 @@ async function processMessage(
     const command = commandMap.get(jobMessage.command);
 
     if (!command) {
-      throw new InvalidJobMessageError(`Unknown command: ${jobMessage.command}`);
+      throw new InvalidJobMessageError(
+        `Unknown command: ${jobMessage.command}`,
+      );
     }
-
-    await command.run({ args: jobMessage.args ?? [], prisma });
 
     if (!message.ReceiptHandle) {
       throw new Error(
         `Received SQS message ${message.MessageId ?? jobMessage.id} without a receipt handle.`,
+      );
+    }
+
+    const visibilityTimeout = resolveVisibilityTimeoutSeconds();
+    const heartbeat = setInterval(
+      () => {
+        void sqsClient
+          .send(
+            new ChangeMessageVisibilityCommand({
+              QueueUrl: queueUrl,
+              ReceiptHandle: message.ReceiptHandle,
+              VisibilityTimeout: visibilityTimeout,
+            }),
+          )
+          .catch((error: unknown) => {
+            console.error(
+              `Failed to extend visibility for job ${jobMessage?.id ?? "<unknown>"}: ${getErrorMessage(error)}`,
+            );
+          });
+      },
+      Math.max(15, Math.floor(visibilityTimeout / 2)) * 1000,
+    );
+
+    try {
+      await command.run({ args: jobMessage.args ?? [], prisma });
+    } finally {
+      clearInterval(heartbeat);
+    }
+
+    const replyQueueUrl = getReplyQueueUrl(jobMessage);
+    if (replyQueueUrl) {
+      await sendReply(
+        sqsClient,
+        replyQueueUrl,
+        buildReply(jobMessage, { success: true, exitCode: 0 }),
+        signingKey,
       );
     }
 
@@ -254,55 +234,31 @@ async function processMessage(
       }),
     );
 
-    console.log(`Command ${jobMessage.command} completed successfully for job ${jobMessage.id}.`);
-
-    const replyQueueUrl = getReplyQueueUrl(jobMessage);
-
-    if (!replyQueueUrl) {
-      return;
-    }
-
-    try {
-      await sendReply(
-        sqsClient,
-        replyQueueUrl,
-        buildReply(jobMessage, { success: true, exitCode: 0 }),
-        signingKey,
-      );
-    } catch (replyError) {
-      console.error(
-        `Failed to send success reply for job ${jobMessage.id}: ${getErrorMessage(replyError)}`,
-      );
-    }
+    console.log(
+      `Command ${jobMessage.command} completed successfully for job ${jobMessage.id}.`,
+    );
   } catch (error) {
     const errorMessage = getErrorMessage(error);
-    const failedJob = jobMessage ?? replyContext;
+    const failedJob: Partial<JobMessage> = jobMessage ?? {};
 
     console.error(
-      `Command ${failedJob.command ?? '<unknown>'} failed${failedJob.id ? ` for job ${failedJob.id}` : ''}: ${errorMessage}`,
+      `Command ${failedJob.command ?? "<unknown>"} failed${failedJob.id ? ` for job ${failedJob.id}` : ""}: ${errorMessage}`,
     );
 
     if (isInvalidJobMessageError(error)) {
-      try {
-        await deleteMessageIfPossible(sqsClient, queueUrl, message);
-        console.log(
-          `Deleted invalid SQS message ${message.MessageId ?? failedJob.id ?? '<unknown>'}.`,
-        );
-      } catch (deleteError) {
-        console.error(
-          `Failed to delete invalid SQS message ${message.MessageId ?? failedJob.id ?? '<unknown>'}: ${getErrorMessage(deleteError)}`,
-        );
-      }
+      console.error(
+        `Invalid message will remain in the queue for retry and DLQ redrive: ${message.MessageId ?? failedJob.id ?? "<unknown>"}.`,
+      );
     }
-
-    await sendFailureReplyIfConfigured(sqsClient, failedJob, errorMessage, signingKey);
   }
 }
 
 export async function startWorker(queueUrl: string): Promise<void> {
   const signingKey = process.env.QUEUE_MESSAGE_SIGNING_KEY;
   if (!signingKey) {
-    throw new Error('QUEUE_MESSAGE_SIGNING_KEY is required for SQS worker mode.');
+    throw new Error(
+      "QUEUE_MESSAGE_SIGNING_KEY is required for SQS worker mode.",
+    );
   }
 
   const sqsClient = createSqsClient();
@@ -317,14 +273,16 @@ export async function startWorker(queueUrl: string): Promise<void> {
     }
 
     shutdownRequested = true;
-    console.log('Received SIGTERM. Worker will stop after the current message finishes.');
+    console.log(
+      "Received SIGTERM. Worker will stop after the current message finishes.",
+    );
 
     if (!processingMessage) {
       receiveAbortController?.abort();
     }
   };
 
-  process.on('SIGTERM', handleSigterm);
+  process.on("SIGTERM", handleSigterm);
 
   try {
     while (!shutdownRequested) {
@@ -336,6 +294,7 @@ export async function startWorker(queueUrl: string): Promise<void> {
             QueueUrl: queueUrl,
             MaxNumberOfMessages: 1,
             WaitTimeSeconds: 20,
+            VisibilityTimeout: resolveVisibilityTimeoutSeconds(),
           }),
           { abortSignal: receiveAbortController.signal },
         );
@@ -360,9 +319,9 @@ export async function startWorker(queueUrl: string): Promise<void> {
       }
     }
   } finally {
-    process.off('SIGTERM', handleSigterm);
+    process.off("SIGTERM", handleSigterm);
     await prisma.$disconnect();
     sqsClient.destroy();
-    console.log('SQS worker stopped.');
+    console.log("SQS worker stopped.");
   }
 }

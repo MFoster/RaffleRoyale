@@ -18,7 +18,7 @@ import RaffleDetailsActions from '@/components/RaffleDetailsActions';
 import SiteHeader from '@/components/SiteHeader';
 import WinnerDrawProof, { type DrawProofView } from '@/components/WinnerDrawProof';
 import { royaleTokens } from '@/design-system';
-import { getInitials } from '@/lib/raffleStatus';
+import { getInitials, type RaffleStatus } from '@/lib/raffleStatus';
 import { raffleFindOne } from '@/generated/clients';
 import {
   getApiErrorMessage,
@@ -27,15 +27,6 @@ import {
 } from '@/lib/generated-api';
 
 export const dynamic = 'force-dynamic';
-
-type RaffleStatus =
-  | 'DRAFT'
-  | 'ACTIVE'
-  | 'SOLD_OUT'
-  | 'EXPIRED'
-  | 'PENDING_DRAW'
-  | 'DISBANDED'
-  | 'COMPLETED';
 
 type RaffleItemType = 'PHYSICAL' | 'DIGITAL';
 

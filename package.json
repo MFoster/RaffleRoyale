@@ -19,6 +19,8 @@
     "prisma:generate": "npm run prisma:generate -w @raffleroyale/db",
     "prisma:migrate:dev": "npm run prisma:migrate:dev -w @raffleroyale/db",
     "prisma:migrate:deploy": "npm run prisma:migrate:deploy -w @raffleroyale/db",
+    "infra:synth": "npm run synth -w @raffleroyale/infra --",
+    "infra:test": "npm run test -w @raffleroyale/cdk-constructs && npm run test -w @raffleroyale/infra",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"

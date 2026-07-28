@@ -16,7 +16,6 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import EnhancedHomepageRaffles from '@/components/home/EnhancedHomepageRaffles';
 import { alpha } from '@mui/material/styles';
-import AppLink from '@/components/AppLink';
 import PageContainer from '@/components/layout/PageContainer';
 import Section from '@/components/layout/Section';
 import SectionHeading from '@/components/layout/SectionHeading';
@@ -24,6 +23,7 @@ import SiteHeader from '@/components/SiteHeader';
 import { royaleTokens } from '@/design-system';
 import { raffleFindAll } from '@/generated/clients';
 import { getApiErrorMessage, getServerApiConfig } from '@/lib/generated-api';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Home',
@@ -314,35 +314,37 @@ export default async function Home() {
               }}
             >
               <Stack spacing={3}>
-                {howItWorksSteps.map(({ step, title, description, icon: Icon, tone }) => {
+                {howItWorksSteps.map(({ step, title, description, icon: Icon, tone, href }) => {
                   const accent = toneColorByValue[tone];
 
                   return (
                     <Stack key={step} direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
-                      <Box
-                        sx={{
-                          width: 48,
-                          height: 48,
-                          flexShrink: 0,
-                          display: 'grid',
-                          placeItems: 'center',
-                          borderRadius: '50%',
-                          bgcolor: alpha(accent, 0.14),
-                          color: accent,
-                          border: '1px solid',
-                          borderColor: alpha(accent, 0.28),
-                        }}
-                      >
-                        <Icon />
-                      </Box>
-                      <Stack spacing={0.5}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                          {title}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {description}
-                        </Typography>
-                      </Stack>
+                      <Link href={href} style={{ textDecoration: 'none', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                        <Box
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            flexShrink: 0,
+                            display: 'grid',
+                            placeItems: 'center',
+                            borderRadius: '50%',
+                            bgcolor: alpha(accent, 0.14),
+                            color: accent,
+                            border: '1px solid',
+                            borderColor: alpha(accent, 0.28),
+                          }}
+                        >
+                          <Icon />
+                        </Box>
+                        <Stack spacing={0.5}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                            {title}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {description}
+                          </Typography>
+                        </Stack>
+                      </Link>
                     </Stack>
                   );
                 })}
@@ -392,7 +394,6 @@ export default async function Home() {
                   return (
                     <Card key={title} sx={{ borderColor: alpha(accent, 0.28) }}>
                       <CardActionArea
-                        component={AppLink}
                         href={href}
                         sx={{ height: '100%', borderRadius: 'inherit' }}
                       >

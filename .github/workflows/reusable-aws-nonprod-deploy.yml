@@ -1,0 +1,299 @@
+name: Reusable AWS non-production deploy
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: Immutable full Git commit SHA used for all service images
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      github_environment:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGISTRY_STACK: RaffleRoyaleNonprodRegistry
+  PLATFORM_STACK: RaffleRoyaleNonprodPlatform
+  WORKLOADS_STACK: RaffleRoyaleNonprodWorkloads
+  SERVICES_STACK: RaffleRoyaleNonprodServices
+
+jobs:
+  registry:
+    name: Deploy registry
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    steps:
+      - name: Validate immutable image tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          if ! printf '%s' "$IMAGE_TAG" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "image_tag must be a lowercase 40-character Git commit SHA."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Deploy immutable ECR repositories
+        run: |
+          npm run deploy -w @raffleroyale/infra -- \
+            "$REGISTRY_STACK" \
+            --require-approval never \
+            --context imageTag=${{ inputs.image_tag }}
+
+  publish:
+    name: Publish ${{ matrix.service }} image
+    needs: registry
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api
+          - web
+          - jobs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Read repository output
+        id: outputs
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          case "$SERVICE" in
+            api) OUTPUT_KEY=ApiRepositoryName ;;
+            web) OUTPUT_KEY=WebRepositoryName ;;
+            jobs) OUTPUT_KEY=JobsRepositoryName ;;
+            *) echo "Unsupported service: $SERVICE"; exit 1 ;;
+          esac
+
+          REPOSITORY=$(aws cloudformation describe-stacks \
+            --stack-name "$REGISTRY_STACK" \
+            --query "Stacks[0].Outputs[?OutputKey=='${OUTPUT_KEY}'].OutputValue | [0]" \
+            --output text)
+          test -n "$REPOSITORY" && test "$REPOSITORY" != "None"
+          echo "repository=$REPOSITORY" >> "$GITHUB_OUTPUT"
+
+      - name: Check for an existing immutable image
+        id: image
+        env:
+          REPOSITORY: ${{ steps.outputs.outputs.repository }}
+        run: |
+          EXISTS=false
+          if aws ecr describe-images \
+            --repository-name "$REPOSITORY" \
+            --image-ids imageTag=${{ inputs.image_tag }} \
+            > /dev/null 2>&1; then
+            EXISTS=true
+          fi
+          echo "exists=$EXISTS" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+            && [ "${{ inputs.image_tag }}" != "${{ github.sha }}" ] \
+            && [ "$EXISTS" != "true" ]; then
+            echo "Manual rollback tags must already exist in every ECR repository."
+            exit 1
+          fi
+
+      - name: Build and publish immutable image
+        if: steps.image.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.service }}/Dockerfile
+          target: prod
+          push: true
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          tags: ${{ steps.ecr.outputs.registry }}/${{ steps.outputs.outputs.repository }}:${{ inputs.image_tag }}
+
+  task-definitions:
+    name: Deploy platform and task definitions
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Deploy platform and immutable task definitions
+        run: |
+          npm run deploy -w @raffleroyale/infra -- \
+            "$PLATFORM_STACK" "$WORKLOADS_STACK" \
+            --require-approval never \
+            --context imageTag=${{ inputs.image_tag }}
+
+  migrate:
+    name: Run one-off ECS migration
+    needs: task-definitions
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Run migration task and require zero exit code
+        run: |
+          stack_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$WORKLOADS_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" \
+              --output text
+          }
+
+          CLUSTER=$(stack_output ClusterName)
+          TASK_DEFINITION=$(stack_output JobsTaskDefinitionArn)
+          CONTAINER=$(stack_output JobsContainerName)
+          SUBNETS=$(stack_output ApplicationSubnetIds)
+          SECURITY_GROUP=$(stack_output JobsSecurityGroupId)
+
+          SUBNET_JSON=$(printf '%s' "$SUBNETS" | jq -R 'split(",")')
+          NETWORK=$(jq -cn \
+            --argjson subnets "$SUBNET_JSON" \
+            --arg securityGroup "$SECURITY_GROUP" \
+            '{awsvpcConfiguration:{subnets:$subnets,securityGroups:[$securityGroup],assignPublicIp:"DISABLED"}}')
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --launch-type FARGATE \
+            --task-definition "$TASK_DEFINITION" \
+            --network-configuration "$NETWORK" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "ECS did not start the migration task."
+            exit 1
+          fi
+
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "$CLUSTER" \
+            --tasks "$TASK_ARN" \
+            --query "tasks[0].containers[?name=='${CONTAINER}'].exitCode | [0]" \
+            --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            aws ecs describe-tasks \
+              --cluster "$CLUSTER" \
+              --tasks "$TASK_ARN" \
+              --query 'tasks[0].{stopCode:stopCode,stoppedReason:stoppedReason,containers:containers[*].{name:name,exitCode:exitCode,reason:reason}}'
+            exit 1
+          fi
+
+  services:
+    name: Roll out services and smoke test
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Deploy ECS services and ALB routing
+        run: |
+          npm run deploy -w @raffleroyale/infra -- \
+            "$SERVICES_STACK" \
+            --require-approval never \
+            --context imageTag=${{ inputs.image_tag }}
+
+      - name: Wait for service stability
+        run: |
+          stack_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$SERVICES_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" \
+              --output text
+          }
+
+          CLUSTER=$(stack_output ClusterName)
+          API_SERVICE=$(stack_output ApiServiceName)
+          WEB_SERVICE=$(stack_output WebServiceName)
+          JOBS_SERVICE=$(stack_output JobsServiceName)
+
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER" \
+            --services "$API_SERVICE" "$WEB_SERVICE" "$JOBS_SERVICE"
+
+      - name: Smoke test ALB routes
+        run: |
+          ALB_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$SERVICES_STACK" \
+            --query "Stacks[0].Outputs[?OutputKey=='AlbUrl'].OutputValue | [0]" \
+            --output text)
+
+          curl --fail --silent --show-error --retry 12 --retry-all-errors \
+            --retry-delay 10 "${ALB_URL}/" > /dev/null
+          curl --fail --silent --show-error --retry 12 --retry-all-errors \
+            --retry-delay 10 "${ALB_URL}/api/health" > /dev/null

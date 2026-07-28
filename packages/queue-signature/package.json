@@ -4,5 +4,8 @@
   "private": true,
   "type": "commonjs",
   "main": "index.js",
-  "types": "index.d.ts"
+  "types": "index.d.ts",
+  "scripts": {
+    "test": "node --test index.test.js"
+  }
 }

@@ -122,6 +122,8 @@ Messages that fail validation or signature verification are treated as invalid, 
 
 The default seed fixture is [fixtures/seed.yaml](fixtures/seed.yaml). It contains users, raffles, transactions, tickets, payouts, and raffle events that are inserted in a single transaction.
 
+If `dateAnchor` is set at the top level of the fixture, all fixture timestamps are shifted by the delta between `dateAnchor` and the current runtime. This keeps the seeded raffle mix fresh (active, future, and expired) without rewriting every hardcoded date.
+
 ## Local development
 
 The dev compose file wires the worker to ElasticMQ and the database. If you need to inspect queued messages, use the ElasticMQ UI on port `9325`.

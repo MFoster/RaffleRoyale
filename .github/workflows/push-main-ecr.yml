@@ -1,20 +1,27 @@
-name: Main Push CI and ECR Publish
+name: Main CI and non-production deploy
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Existing immutable 40-character Git SHA image tag to deploy
+        required: false
+        type: string
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
-  group: push-ecr-${{ github.ref }}
-  cancel-in-progress: true
+  group: non-production
+  cancel-in-progress: false
 
 jobs:
   quality:
-    name: Lint, test, build
+    name: Lint, test, build, and synth
     runs-on: ubuntu-latest
 
     steps:
@@ -24,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -42,365 +49,15 @@ jobs:
       - name: Build
         run: npm run build
 
-  publish-ecr:
-    name: Build and push Docker images to ECR
+      - name: Synthesize CDK
+        run: npm run infra:synth -- --context imageTag=0000000000000000000000000000000000000000
+
+  deploy:
+    name: Deploy non-production
     needs: quality
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - api
-          - web
-          - jobs
-    env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX || 'raffle-royale' }}
-      WEB_API_PROXY_TARGET: ${{ vars.WEB_API_PROXY_TARGET || '' }}
-      ENFORCE_HTTPS: ${{ vars.ENFORCE_HTTPS || 'false' }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Validate web proxy target
-        if: matrix.service == 'web'
-        run: |
-          if [ -z "${WEB_API_PROXY_TARGET}" ]; then
-            echo "WEB_API_PROXY_TARGET variable is required for production image build."
-            exit 1
-          fi
-          case "${WEB_API_PROXY_TARGET}" in
-            http://*|https://*) ;;
-            *)
-              echo "WEB_API_PROXY_TARGET must be an absolute URL (http:// or https://)."
-              exit 1
-              ;;
-          esac
-
-      - name: Build and push api image
-        if: matrix.service == 'api'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/${{ matrix.service }}/Dockerfile
-          target: prod
-          push: true
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:main
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.run_number }}
-
-      - name: Build and push web image
-        if: matrix.service == 'web'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/${{ matrix.service }}/Dockerfile
-          target: prod
-          push: true
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-          build-args: |
-            API_PROXY_TARGET=${{ env.WEB_API_PROXY_TARGET }}
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:main
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ matrix.service }}:${{ github.run_number }}
-
-      - name: Build and push jobs image
-        if: matrix.service == 'jobs'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/jobs/Dockerfile
-          target: prod
-          push: true
-          cache-from: type=gha,scope=jobs
-          cache-to: type=gha,mode=max,scope=jobs
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:main
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:${{ github.run_number }}
-
-  run-migrations:
-    name: Run database migrations via SQS
-    needs: publish-ecr
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      JOBS_QUEUE_NAME: ${{ vars.JOBS_QUEUE_NAME || 'raffle-royale-jobs' }}
-      JOBS_REPLY_QUEUE_NAME: ${{ vars.JOBS_REPLY_QUEUE_NAME || 'raffle-royale-jobs-replies' }}
-
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-
-      - name: Send migrate message and wait for reply
-        run: |
-          # Get queue URLs
-          JOBS_QUEUE_URL=$(aws sqs get-queue-url --queue-name "$JOBS_QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
-          REPLY_QUEUE_URL=$(aws sqs get-queue-url --queue-name "$JOBS_REPLY_QUEUE_NAME" --region "$AWS_REGION" --query QueueUrl --output text)
-
-          # Generate correlationId
-          CORRELATION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
-
-          # Send message
-          aws sqs send-message \
-            --queue-url "$JOBS_QUEUE_URL" \
-            --message-body "{\"id\":\"${CORRELATION_ID}\",\"command\":\"migrate\",\"args\":[],\"replyQueueUrl\":\"${REPLY_QUEUE_URL}\"}" \
-            --region "$AWS_REGION"
-
-          echo "Sent migrate message with id=${CORRELATION_ID}"
-          echo "Waiting for reply (max 10 minutes)..."
-
-          # Poll for reply
-          TIMEOUT=600
-          START=$(date +%s)
-          while true; do
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START))
-            if [ $ELAPSED -ge $TIMEOUT ]; then
-              echo "Timed out waiting for migration reply after ${TIMEOUT}s."
-              exit 1
-            fi
-
-            MSG=$(aws sqs receive-message \
-              --queue-url "$REPLY_QUEUE_URL" \
-              --max-number-of-messages 10 \
-              --wait-time-seconds 20 \
-              --region "$AWS_REGION" \
-              --output json 2>/dev/null || echo '{}')
-
-            MESSAGES=$(echo "$MSG" | jq -r '.Messages // [] | length')
-            if [ "$MESSAGES" -gt 0 ]; then
-              for i in $(seq 0 $((MESSAGES - 1))); do
-                BODY=$(echo "$MSG" | jq -r ".Messages[$i].Body")
-                RECEIPT=$(echo "$MSG" | jq -r ".Messages[$i].ReceiptHandle")
-                MSG_ID=$(echo "$BODY" | jq -r '.id // ""')
-
-                if [ "$MSG_ID" = "$CORRELATION_ID" ]; then
-                  # Delete the reply message
-                  aws sqs delete-message --queue-url "$REPLY_QUEUE_URL" --receipt-handle "$RECEIPT" --region "$AWS_REGION"
-
-                  SUCCESS=$(echo "$BODY" | jq -r '.success')
-                  ERROR=$(echo "$BODY" | jq -r '.error // ""')
-
-                  if [ "$SUCCESS" = "true" ]; then
-                    echo "Migrations applied successfully."
-                    exit 0
-                  else
-                    echo "Migration failed: $ERROR"
-                    exit 1
-                  fi
-                else
-                  # Not our message — return it to the queue immediately
-                  aws sqs change-message-visibility \
-                    --queue-url "$REPLY_QUEUE_URL" \
-                    --receipt-handle "$RECEIPT" \
-                    --visibility-timeout 0 \
-                    --region "$AWS_REGION"
-                fi
-              done
-            fi
-            sleep 2
-          done
-
-  deploy-ecs:
-    name: Deploy API, web, and jobs to ECS Fargate
-    needs: run-migrations
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX || 'raffle-royale' }}
-      ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'raffle-royale' }}
-      ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE || 'raffle-royale-api' }}
-      ECS_WEB_SERVICE: ${{ vars.ECS_WEB_SERVICE || 'raffle-royale-web' }}
-      ECS_JOBS_SERVICE: ${{ vars.ECS_JOBS_SERVICE || 'raffle-royale-jobs' }}
-      ECS_FRONTEND_URL: ${{ vars.ECS_FRONTEND_URL || '' }}
-      WEB_API_PROXY_TARGET: ${{ vars.WEB_API_PROXY_TARGET || '' }}
-      ECS_API_UPLOADS_EFS_FILESYSTEM_ID: ${{ vars.ECS_API_UPLOADS_EFS_FILESYSTEM_ID || '' }}
-      ECS_API_UPLOADS_EFS_ACCESS_POINT_ID: ${{ vars.ECS_API_UPLOADS_EFS_ACCESS_POINT_ID || '' }}
-      ENFORCE_HTTPS: ${{ vars.ENFORCE_HTTPS || 'false' }}
-      JOBS_SQS_QUEUE_URL: ${{ vars.JOBS_SQS_QUEUE_URL || '' }}
-      JOBS_SQS_REPLY_QUEUE_URL: ${{ vars.JOBS_SQS_REPLY_QUEUE_URL || '' }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Validate deploy secrets
-        env:
-          ECS_API_DATABASE_URL: ${{ secrets.ECS_API_DATABASE_URL }}
-          ECS_JWT_SECRET: ${{ secrets.ECS_JWT_SECRET }}
-          ECS_JWT_REFRESH_SECRET: ${{ secrets.ECS_JWT_REFRESH_SECRET }}
-        run: |
-          if [ -z "${ECS_API_DATABASE_URL}" ]; then
-            echo "ECS_API_DATABASE_URL secret is required for ECS deployment."
-            exit 1
-          fi
-          if [ -z "${ECS_JWT_SECRET}" ]; then
-            echo "ECS_JWT_SECRET secret is required for ECS deployment."
-            exit 1
-          fi
-          if [ -z "${ECS_JWT_REFRESH_SECRET}" ]; then
-            echo "ECS_JWT_REFRESH_SECRET secret is required for ECS deployment."
-            exit 1
-          fi
-          if [ -z "${ECS_FRONTEND_URL}" ]; then
-            echo "ECS_FRONTEND_URL variable is required for ECS deployment."
-            exit 1
-          fi
-          if [ -z "${WEB_API_PROXY_TARGET}" ]; then
-            echo "WEB_API_PROXY_TARGET variable is required for ECS deployment."
-            exit 1
-          fi
-          case "${WEB_API_PROXY_TARGET}" in
-            http://*|https://*) ;;
-            *)
-              echo "WEB_API_PROXY_TARGET must be an absolute URL (http:// or https://)."
-              exit 1
-              ;;
-          esac
-          if [ "${ENFORCE_HTTPS}" = "true" ]; then
-            case "${ECS_FRONTEND_URL}" in
-              https://*) ;;
-              *)
-                echo "ECS_FRONTEND_URL must use https:// when ENFORCE_HTTPS=true."
-                exit 1
-                ;;
-            esac
-          fi
-          if [ -z "${ECS_API_UPLOADS_EFS_FILESYSTEM_ID}" ]; then
-            echo "ECS_API_UPLOADS_EFS_FILESYSTEM_ID variable is required for ECS deployment."
-            exit 1
-          fi
-          if [ -z "${ECS_API_UPLOADS_EFS_ACCESS_POINT_ID}" ]; then
-            echo "ECS_API_UPLOADS_EFS_ACCESS_POINT_ID variable is required for ECS deployment."
-            exit 1
-          fi
-
-      - name: Prepare task definition files
-        id: taskdef
-        run: |
-          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-
-          API_TASK_DEF="$RUNNER_TEMP/task-definition-api.json"
-          WEB_TASK_DEF="$RUNNER_TEMP/task-definition-web.json"
-          JOBS_TASK_DEF="$RUNNER_TEMP/task-definition-jobs.json"
-
-          sed \
-            -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
-            -e "s/__AWS_REGION__/${AWS_REGION}/g" \
-            -e "s|__FRONTEND_URL__|${ECS_FRONTEND_URL}|g" \
-            -e "s/__ECS_API_UPLOADS_EFS_FILESYSTEM_ID__/${ECS_API_UPLOADS_EFS_FILESYSTEM_ID}/g" \
-            -e "s/__ECS_API_UPLOADS_EFS_ACCESS_POINT_ID__/${ECS_API_UPLOADS_EFS_ACCESS_POINT_ID}/g" \
-            .aws/ecs/task-definition-api.json > "$API_TASK_DEF"
-
-          sed \
-            -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
-            -e "s/__AWS_REGION__/${AWS_REGION}/g" \
-            -e "s|__WEB_API_PROXY_TARGET__|${WEB_API_PROXY_TARGET}|g" \
-            .aws/ecs/task-definition-web.json > "$WEB_TASK_DEF"
-
-          sed \
-            -e "s/__AWS_ACCOUNT_ID__/${ACCOUNT_ID}/g" \
-            -e "s/__AWS_REGION__/${AWS_REGION}/g" \
-            -e "s|__JOBS_SQS_QUEUE_URL__|${JOBS_SQS_QUEUE_URL}|g" \
-            -e "s|__JOBS_SQS_REPLY_QUEUE_URL__|${JOBS_SQS_REPLY_QUEUE_URL}|g" \
-            .aws/ecs/task-definition-jobs.json > "$JOBS_TASK_DEF"
-
-          echo "api=${API_TASK_DEF}" >> "$GITHUB_OUTPUT"
-          echo "web=${WEB_TASK_DEF}" >> "$GITHUB_OUTPUT"
-          echo "jobs=${JOBS_TASK_DEF}" >> "$GITHUB_OUTPUT"
-
-      - name: Render API task definition
-        id: render-api
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: ${{ steps.taskdef.outputs.api }}
-          container-name: api
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-api:${{ github.sha }}
-          environment-variables: |
-            DATABASE_URL=${{ secrets.ECS_API_DATABASE_URL }}
-            JWT_SECRET=${{ secrets.ECS_JWT_SECRET }}
-            JWT_REFRESH_SECRET=${{ secrets.ECS_JWT_REFRESH_SECRET }}
-
-      - name: Deploy API service
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.render-api.outputs.task-definition }}
-          service: ${{ env.ECS_API_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
-
-      - name: Render web task definition
-        id: render-web
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: ${{ steps.taskdef.outputs.web }}
-          container-name: web
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-web:${{ github.sha }}
-
-      - name: Deploy web service
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.render-web.outputs.task-definition }}
-          service: ${{ env.ECS_WEB_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
-
-      - name: Render jobs task definition
-        id: render-jobs
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: ${{ steps.taskdef.outputs.jobs }}
-          container-name: jobs
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-jobs:${{ github.sha }}
-          environment-variables: |
-            DATABASE_URL=${{ secrets.ECS_API_DATABASE_URL }}
-
-      - name: Deploy jobs service
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.render-jobs.outputs.task-definition }}
-          service: ${{ env.ECS_JOBS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+    uses: ./.github/workflows/reusable-aws-nonprod-deploy.yml
+    with:
+      image_tag: ${{ inputs.image_tag || github.sha }}
+      aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      github_environment: non-production
+    secrets: inherit

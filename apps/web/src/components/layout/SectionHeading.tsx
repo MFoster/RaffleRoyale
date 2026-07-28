@@ -12,7 +12,7 @@ export interface SectionHeadingProps {
   action?: ReactNode;
   align?: 'start' | 'center';
   /** Heading typography level. */
-  titleVariant?: 'h1' | 'h2' | 'h3' | 'h4';
+  titleVariant?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5';
 }
 
 /**
