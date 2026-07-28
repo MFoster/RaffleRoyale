@@ -76,7 +76,7 @@ export function revealWinnerProof(params: {
     digest: derived.digest,
     winnerIndex: derived.winnerIndex,
     ticketCount: params.ticketCount,
-    winnerTicketNumber: -1,
+    winnerTicketNumber: derived.winnerIndex + 1,
     publicKey,
   };
 }
