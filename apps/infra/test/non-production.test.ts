@@ -59,6 +59,9 @@ test('delivery role trusts only the repository and can inspect migration tasks',
         Match.objectLike({
           Action: 'sts:AssumeRoleWithWebIdentity',
           Condition: Match.objectLike({
+            StringEquals: {
+              'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+            },
             StringLike: {
               'token.actions.githubusercontent.com:sub': [
                 'repo:MFoster/RaffleRoyale:ref:refs/heads/main',
@@ -80,6 +83,17 @@ test('delivery role trusts only the repository and can inspect migration tasks',
       ]),
     },
   });
+  const policies = JSON.stringify(template.findResources('AWS::IAM::Policy'));
+  for (const role of [
+    'lookup',
+    'file-publishing',
+    'image-publishing',
+    'deploy',
+  ]) {
+    assert.match(policies, new RegExp(`cdk-hnb659fds-${role}-role-`));
+  }
+  assert.match(policies, /ssm:GetParameter/);
+  assert.match(policies, /parameter\/cdk-bootstrap\/hnb659fds\/version/);
 });
 
 test('registry uses immutable tags for all service repositories', () => {

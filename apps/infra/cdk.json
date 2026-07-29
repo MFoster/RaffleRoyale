@@ -6,7 +6,7 @@
     "githubOwner": "MFoster",
     "githubRepository": "RaffleRoyale",
     "githubEnvironment": "non-production",
-    "createGithubOidcProvider": true,
+    "createGithubOidcProvider": false,
     "databaseName": "raffleroyale",
     "retainData": false,
     "apiDesiredCount": 1,
