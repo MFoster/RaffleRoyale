@@ -10,6 +10,16 @@ import {
   TransactionStatus,
 } from '@prisma/client';
 import { RaffleService } from './raffle.service';
+import {
+  QUICKNET_CHAIN_HASH,
+  QUICKNET_GENESIS_TIME,
+  QUICKNET_PERIOD_SECONDS,
+  QUICKNET_PUBLIC_KEY,
+  QUICKNET_SCHEME,
+  randomnessFromSignature,
+  revealWinnerProof,
+  type BeaconChainInfo,
+} from '@raffleroyale/raffle-draw';
 
 describe('RaffleService', () => {
   const raffleId = '11111111-1111-1111-1111-111111111111';
@@ -59,6 +69,11 @@ describe('RaffleService', () => {
     raffleEvent: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    ticket: {
+      count: jest.fn(),
+      findFirst: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
@@ -79,6 +94,11 @@ describe('RaffleService', () => {
     raffleEvent: {
       create: jest.Mock;
       findMany: jest.Mock;
+      findFirst: jest.Mock;
+    };
+    ticket: {
+      count: jest.Mock;
+      findFirst: jest.Mock;
     };
     user: {
       findUnique: jest.Mock;
@@ -90,7 +110,43 @@ describe('RaffleService', () => {
     };
   };
 
-  const service = new RaffleService(mockPrisma as never);
+  const beaconInfo: BeaconChainInfo = {
+    publicKey: QUICKNET_PUBLIC_KEY,
+    period: QUICKNET_PERIOD_SECONDS,
+    genesisTime: QUICKNET_GENESIS_TIME,
+    chainHash: QUICKNET_CHAIN_HASH,
+    scheme: QUICKNET_SCHEME,
+    beaconId: 'quicknet',
+  };
+  // A real, signed drand quicknet round so the BLS verification path runs for
+  // real in the reveal tests.
+  const beaconRoundFixture = {
+    round: 20000000,
+    signature:
+      '96892582a33552a7b67ba44ef09c3ccd535bbebe760c93ecf45be8958d0c0f06390c6d19d7bf492eb806af7eef6b125c',
+  };
+  const beaconRandomness = randomnessFromSignature(
+    beaconRoundFixture.signature,
+  );
+
+  const mockBeacon = {
+    buildCommitment: jest.fn(),
+    getChainInfo: jest.fn().mockResolvedValue(beaconInfo),
+    getRound: jest.fn().mockResolvedValue({
+      ...beaconRoundFixture,
+      randomness: beaconRandomness,
+    }),
+  };
+  const mockExpirationScheduler = {
+    createExpirationSchedule: jest.fn().mockResolvedValue(true),
+    deleteExpirationSchedule: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const service = new RaffleService(
+    mockPrisma as never,
+    mockBeacon as never,
+    mockExpirationScheduler as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -134,6 +190,7 @@ describe('RaffleService', () => {
       ticketsSold: 0,
       minSellThrough: null,
       status: RaffleStatus.DRAFT,
+      drawBeaconRound: BigInt(12345),
       startTime: new Date(),
       endTime: new Date(Date.now() + 3600000),
       createdAt: new Date(),
@@ -156,6 +213,7 @@ describe('RaffleService', () => {
       ticketsSold: 10,
       minSellThrough: null,
       status: RaffleStatus.COMPLETED,
+      drawBeaconRound: BigInt(67890),
       startTime: new Date(),
       endTime: new Date(Date.now() - 3600000),
       createdAt: new Date(),
@@ -191,6 +249,10 @@ describe('RaffleService', () => {
     mockPrisma.pendingRaffleImageUpload.deleteMany.mockResolvedValue({
       count: 0,
     });
+    mockExpirationScheduler.createExpirationSchedule.mockResolvedValue(true);
+    mockExpirationScheduler.deleteExpirationSchedule.mockResolvedValue(
+      undefined,
+    );
   });
 
   it('claims pending uploads owned by the requester during raffle creation', async () => {
@@ -225,6 +287,7 @@ describe('RaffleService', () => {
       ticketsSold: 0,
       minSellThrough: null,
       status: RaffleStatus.DRAFT,
+      drawBeaconRound: BigInt(12345),
       startTime: new Date(),
       endTime: new Date(now),
       createdAt: new Date(),
@@ -270,6 +333,7 @@ describe('RaffleService', () => {
       },
     });
     expect(result.imageUrls).toEqual(imageUrls);
+    expect(result.drawBeaconRound).toBe(12345);
   });
 
   it('rejects raffle creation when imageUrls include missing or unowned uploads', async () => {
@@ -299,6 +363,71 @@ describe('RaffleService', () => {
         rafflerId,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('creates an expiration schedule for active raffles', async () => {
+    const endTime = new Date(Date.now() + 60_000).toISOString();
+    mockTx.raffle.create.mockResolvedValue({
+      id: raffleId,
+      rafflerId,
+      title: 'Scheduled raffle',
+      description: null,
+      imageUrls: [],
+      itemType: ItemType.PHYSICAL,
+      totalTickets: 10,
+      ticketPrice: 500,
+      ticketsSold: 0,
+      minSellThrough: null,
+      status: RaffleStatus.ACTIVE,
+      startTime: new Date(),
+      endTime: new Date(endTime),
+      drawBeaconRound: null,
+      drawBeaconChainHash: null,
+      drawScheme: null,
+      drawCommittedAt: null,
+      drawAvailableAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await service.create(
+      {
+        rafflerId,
+        title: 'Scheduled raffle',
+        totalTickets: 10,
+        ticketPrice: 500,
+        endTime,
+        status: RaffleStatus.ACTIVE,
+      },
+      rafflerId,
+    );
+
+    expect(
+      mockExpirationScheduler.createExpirationSchedule,
+    ).toHaveBeenCalledWith(expect.any(String), new Date(endTime));
+  });
+
+  it('removes a created schedule when raffle persistence fails', async () => {
+    const endTime = new Date(Date.now() + 60_000).toISOString();
+    mockPrisma.$transaction.mockRejectedValueOnce(new Error('database failed'));
+
+    await expect(
+      service.create(
+        {
+          rafflerId,
+          title: 'Scheduled raffle',
+          totalTickets: 10,
+          ticketPrice: 500,
+          endTime,
+          status: RaffleStatus.ACTIVE,
+        },
+        rafflerId,
+      ),
+    ).rejects.toThrow('database failed');
+
+    expect(
+      mockExpirationScheduler.deleteExpirationSchedule,
+    ).toHaveBeenCalledWith(expect.any(String));
   });
 
   it('purchases tickets and returns allocation details', async () => {
@@ -331,6 +460,37 @@ describe('RaffleService', () => {
     });
   });
 
+  it('serializes drawBeaconRound in public raffle listings', async () => {
+    mockPrisma.raffle.findMany.mockResolvedValue([
+      {
+        id: raffleId,
+        rafflerId,
+        title: 'Listing',
+        description: null,
+        imageUrls: [],
+        itemType: ItemType.PHYSICAL,
+        totalTickets: 10,
+        ticketPrice: 500,
+        ticketsSold: 2,
+        minSellThrough: null,
+        status: RaffleStatus.ACTIVE,
+        drawBeaconRound: BigInt(67890),
+        startTime: new Date(),
+        endTime: new Date(Date.now() + 3600000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+
+    const result = await service.findAll();
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        drawBeaconRound: 67890,
+      }),
+    ]);
+  });
+
   it('redacts winner email for unauthenticated raffle detail requests', async () => {
     const result = await service.findOne(raffleId);
 
@@ -358,6 +518,7 @@ describe('RaffleService', () => {
     expect(result.events[0]?.winnerTicket?.buyer?.email).toBe(
       'winner@example.com',
     );
+    expect(result.drawBeaconRound).toBe(67890);
   });
 
   it('marks raffle as SOLD_OUT when final tickets are purchased', async () => {
@@ -393,10 +554,10 @@ describe('RaffleService', () => {
     expect(result.raffleStatus).toBe(RaffleStatus.SOLD_OUT);
   });
 
-  it('resolves a winner for a SOLD_OUT raffle', async () => {
-    mockTx.raffle.findUnique.mockResolvedValue({
+  it('commits a future beacon round for a SOLD_OUT raffle', async () => {
+    const soldOut = {
       id: raffleId,
-      rafflerId: '33333333-3333-3333-3333-333333333333',
+      rafflerId,
       title: 'Sold out raffle',
       description: null,
       itemType: ItemType.PHYSICAL,
@@ -407,35 +568,69 @@ describe('RaffleService', () => {
       status: RaffleStatus.SOLD_OUT,
       startTime: new Date(),
       endTime: new Date(Date.now() + 3600000),
+      drawBeaconRound: null,
+      drawBeaconChainHash: null,
+      drawScheme: null,
+      drawCommittedAt: null,
+      drawAvailableAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
-    mockTx.ticket.count.mockResolvedValue(1);
-    mockTx.ticket.findFirst.mockResolvedValue({
-      id: 'ticket-1',
-      ticketNumber: 1,
+    };
+    mockPrisma.raffle.findUnique.mockResolvedValue(soldOut);
+    mockPrisma.raffleEvent.findFirst.mockResolvedValue(null);
+    mockPrisma.ticket.count.mockResolvedValue(1);
+    mockTx.raffle.findUnique.mockResolvedValue(soldOut);
+
+    const availableAt = new Date(Date.now() + 60000).toISOString();
+    mockBeacon.buildCommitment.mockResolvedValue({
+      chainHash: QUICKNET_CHAIN_HASH,
+      scheme: QUICKNET_SCHEME,
+      round: 12345,
+      committedAt: new Date().toISOString(),
+      availableAt,
+      algorithm: 'drand-quicknet-commit-reveal-v1',
     });
 
     const result = await service.resolveWinner(raffleId);
 
-    expect(mockTx.raffle.update).toHaveBeenCalledWith({
-      where: { id: raffleId },
-      data: { status: RaffleStatus.COMPLETED },
-    });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
+      phase: 'committed',
       raffleId,
-      winnerTicketId: 'ticket-1',
-      winnerTicketNumber: 1,
-      ticketCount: 1,
-      randomIndex: 0,
-      raffleStatus: RaffleStatus.COMPLETED,
+      raffleStatus: RaffleStatus.PENDING_DRAW,
+      beaconRound: 12345,
+      availableAt,
     });
+    const updateCalls = mockTx.raffle.update.mock.calls as Array<
+      [
+        {
+          where: { id: string };
+          data: {
+            status: RaffleStatus;
+            drawBeaconRound: bigint;
+            drawBeaconChainHash: string;
+          };
+        },
+      ]
+    >;
+    const updateCall = updateCalls[0]?.[0];
+    expect(updateCall).toMatchObject({
+      where: { id: raffleId },
+      data: {
+        status: RaffleStatus.PENDING_DRAW,
+        drawBeaconRound: BigInt(12345),
+        drawBeaconChainHash: QUICKNET_CHAIN_HASH,
+      },
+    });
+    const committedEventCalls = mockTx.raffleEvent.create.mock.calls as Array<
+      [{ data: { eventType: string } }]
+    >;
+    expect(committedEventCalls[0]?.[0].data.eventType).toBe('DRAW_COMMITTED');
   });
 
-  it('resolves a winner for an EXPIRED raffle that met threshold', async () => {
-    mockTx.raffle.findUnique.mockResolvedValue({
+  it('commits a draw for an EXPIRED raffle that met its sell-through threshold', async () => {
+    const expiredEligible = {
       id: raffleId,
-      rafflerId: '33333333-3333-3333-3333-333333333333',
+      rafflerId,
       title: 'Threshold-met expired raffle',
       description: null,
       itemType: ItemType.PHYSICAL,
@@ -446,36 +641,157 @@ describe('RaffleService', () => {
       status: RaffleStatus.EXPIRED,
       startTime: new Date(),
       endTime: new Date(Date.now() - 3600000),
+      drawBeaconRound: null,
+      drawBeaconChainHash: null,
+      drawScheme: null,
+      drawCommittedAt: null,
+      drawAvailableAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
-    mockTx.ticket.count.mockResolvedValue(8);
-    mockTx.ticket.findFirst.mockResolvedValue({
-      id: 'ticket-5',
-      ticketNumber: 5,
+    };
+    mockPrisma.raffle.findUnique.mockResolvedValue(expiredEligible);
+    mockPrisma.raffleEvent.findFirst.mockResolvedValue(null);
+    mockPrisma.ticket.count.mockResolvedValue(8);
+    mockTx.raffle.findUnique.mockResolvedValue(expiredEligible);
+
+    const availableAt = new Date(Date.now() + 60000).toISOString();
+    mockBeacon.buildCommitment.mockResolvedValue({
+      chainHash: QUICKNET_CHAIN_HASH,
+      scheme: QUICKNET_SCHEME,
+      round: 999,
+      committedAt: new Date().toISOString(),
+      availableAt,
+      algorithm: 'drand-quicknet-commit-reveal-v1',
     });
 
     const result = await service.resolveWinner(raffleId);
 
+    expect(result).toMatchObject({
+      phase: 'committed',
+      raffleStatus: RaffleStatus.PENDING_DRAW,
+      beaconRound: 999,
+    });
+  });
+
+  it('reveals and verifies the winner once the committed round is available', async () => {
+    const pending = {
+      id: raffleId,
+      rafflerId,
+      title: 'Pending-draw raffle',
+      description: null,
+      itemType: ItemType.PHYSICAL,
+      totalTickets: 8,
+      ticketPrice: 500,
+      ticketsSold: 8,
+      minSellThrough: null,
+      status: RaffleStatus.PENDING_DRAW,
+      startTime: new Date(),
+      endTime: new Date(Date.now() - 3600000),
+      drawBeaconRound: BigInt(beaconRoundFixture.round),
+      drawBeaconChainHash: QUICKNET_CHAIN_HASH,
+      drawScheme: QUICKNET_SCHEME,
+      drawCommittedAt: new Date(Date.now() - 120000),
+      drawAvailableAt: new Date(Date.now() - 1000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    mockPrisma.raffle.findUnique.mockResolvedValue(pending);
+    mockPrisma.raffleEvent.findFirst.mockResolvedValue(null);
+    mockPrisma.ticket.count.mockResolvedValue(8);
+    mockTx.raffle.findUnique.mockResolvedValue(pending);
+    mockTx.raffleEvent.findFirst.mockResolvedValue(null);
+    mockTx.ticket.count.mockResolvedValue(8);
+
+    const expected = revealWinnerProof({
+      raffleId,
+      ticketCount: 8,
+      round: { ...beaconRoundFixture, randomness: beaconRandomness },
+      info: beaconInfo,
+    });
+    mockTx.ticket.findFirst.mockResolvedValue({
+      id: 'ticket-x',
+      ticketNumber: expected.winnerIndex + 1,
+    });
+
+    const result = await service.resolveWinner(raffleId);
+
+    expect(result).toMatchObject({
+      phase: 'revealed',
+      raffleStatus: RaffleStatus.COMPLETED,
+      winnerTicketId: 'ticket-x',
+      winnerIndex: expected.winnerIndex,
+      beaconRound: beaconRoundFixture.round,
+      randomness: beaconRandomness,
+    });
+    expect(mockTx.ticket.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: expected.winnerIndex }),
+    );
     expect(mockTx.raffle.update).toHaveBeenCalledWith({
       where: { id: raffleId },
       data: { status: RaffleStatus.COMPLETED },
     });
-    expect(result).toEqual({
-      raffleId,
-      winnerTicketId: 'ticket-5',
-      winnerTicketNumber: 5,
-      ticketCount: 8,
-      randomIndex: result.randomIndex,
-      raffleStatus: RaffleStatus.COMPLETED,
+    const winnerCreate = (
+      mockTx.raffleEvent.create.mock.calls as Array<
+        [
+          {
+            data: {
+              eventType?: string;
+              metadata?: {
+                algorithm?: string;
+                beacon?: { round?: number };
+              };
+            };
+          },
+        ]
+      >
+    ).find(([call]) => call.data.eventType === 'WINNER_SELECTED');
+    expect(winnerCreate?.[0].data.metadata?.algorithm).toBe(
+      'drand-quicknet-commit-reveal-v1',
+    );
+    expect(winnerCreate?.[0].data.metadata?.beacon?.round).toBe(
+      beaconRoundFixture.round,
+    );
+  });
+
+  it('reports a pending draw when the committed round is not yet available', async () => {
+    const pendingFuture = {
+      id: raffleId,
+      rafflerId,
+      title: 'Pending-draw raffle (future)',
+      description: null,
+      itemType: ItemType.PHYSICAL,
+      totalTickets: 8,
+      ticketPrice: 500,
+      ticketsSold: 8,
+      minSellThrough: null,
+      status: RaffleStatus.PENDING_DRAW,
+      startTime: new Date(),
+      endTime: new Date(Date.now() - 3600000),
+      drawBeaconRound: BigInt(beaconRoundFixture.round),
+      drawBeaconChainHash: QUICKNET_CHAIN_HASH,
+      drawScheme: QUICKNET_SCHEME,
+      drawCommittedAt: new Date(Date.now() - 1000),
+      drawAvailableAt: new Date(Date.now() + 60000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    mockPrisma.raffle.findUnique.mockResolvedValue(pendingFuture);
+    mockPrisma.raffleEvent.findFirst.mockResolvedValue(null);
+
+    const result = await service.resolveWinner(raffleId);
+
+    expect(result).toMatchObject({
+      phase: 'pending',
+      raffleStatus: RaffleStatus.PENDING_DRAW,
+      beaconRound: beaconRoundFixture.round,
     });
-    expect(typeof result.randomIndex).toBe('number');
+    expect(mockBeacon.getRound).not.toHaveBeenCalled();
   });
 
   it('throws when resolving winner for a non-sold-out raffle', async () => {
-    mockTx.raffle.findUnique.mockResolvedValue({
+    mockPrisma.raffle.findUnique.mockResolvedValue({
       id: raffleId,
-      rafflerId: '33333333-3333-3333-3333-333333333333',
+      rafflerId,
       title: 'Active raffle',
       description: null,
       itemType: ItemType.PHYSICAL,
@@ -486,9 +802,15 @@ describe('RaffleService', () => {
       status: RaffleStatus.ACTIVE,
       startTime: new Date(),
       endTime: new Date(Date.now() + 3600000),
+      drawBeaconRound: null,
+      drawBeaconChainHash: null,
+      drawScheme: null,
+      drawCommittedAt: null,
+      drawAvailableAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+    mockPrisma.raffleEvent.findFirst.mockResolvedValue(null);
 
     await expect(service.resolveWinner(raffleId)).rejects.toBeInstanceOf(
       ConflictException,

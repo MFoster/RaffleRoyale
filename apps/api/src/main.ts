@@ -7,6 +7,20 @@ import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as fs from 'fs';
 
+// Prisma returns BigInt for the `draw_beacon_round` column, which JSON.stringify
+// cannot serialize natively. Represent BigInt values as plain numbers in API
+// responses (drand round numbers are small, well within MAX_SAFE_INTEGER).
+if (
+  typeof (BigInt.prototype as unknown as { toJSON?: unknown }).toJSON !== 'function'
+) {
+  (BigInt.prototype as unknown as { toJSON: () => number | string }).toJSON =
+    function (this: bigint) {
+      return this <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? Number(this)
+        : this.toString();
+    };
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const uploadsDirectory =

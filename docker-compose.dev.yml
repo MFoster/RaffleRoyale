@@ -55,12 +55,18 @@ services:
       JWT_REFRESH_SECRET: dev-jwt-refresh-secret-change-me
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
+      DRAND_BASE_URL: http://mock-beacon:8088
+      DRAND_CHAIN_HASH: b8525930172629e30477e25b56ac4c4a75850cd0b6c150a97d216ec64acb8df6
+      DRAND_DRAW_LEAD_SECONDS: 5
+      RAFFLE_EVENTBRIDGE_SCHEDULER_ENABLED: "false"
     command: >
       sh -c "npm run prisma:generate &&
       npm run prisma:migrate:deploy &&
       npm run start:dev -w api"
     depends_on:
       db:
+        condition: service_healthy
+      mock-beacon:
         condition: service_healthy
     ports:
       - "3101:3001"
@@ -107,18 +113,53 @@ services:
       JOBS_SQS_REPLY_QUEUE_URL: http://elasticmq:9324/000000000000/raffle-royale-jobs-replies
       JOBS_SQS_ENDPOINT_URL: http://elasticmq:9324
       QUEUE_MESSAGE_SIGNING_KEY: dev-shared-queue-signing-key-change-me
+      JOBS_SQS_VISIBILITY_TIMEOUT_SECONDS: "120"
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: x
       AWS_SECRET_ACCESS_KEY: x
+      DRAND_BASE_URL: http://mock-beacon:8088
+      DRAND_CHAIN_HASH: b8525930172629e30477e25b56ac4c4a75850cd0b6c150a97d216ec64acb8df6
+      DRAND_DRAW_LEAD_SECONDS: 5
     depends_on:
       db:
         condition: service_healthy
       elasticmq:
         condition: service_healthy
+      mock-beacon:
+        condition: service_healthy
     volumes:
       - ./apps/jobs/src:/workspace/apps/jobs/src
       - ./apps/jobs/fixtures:/workspace/apps/jobs/fixtures
       - shared-uploads:/workspace/apps/jobs/uploads
+
+  mock-beacon:
+    build:
+      context: .
+      dockerfile: apps/jobs/Dockerfile
+      target: dev
+    entrypoint: ["sh", "-c"]
+    command:
+      - exec node_modules/.bin/tsx packages/raffle-draw/dev/mock-beacon.ts
+    environment:
+      MOCK_BEACON_PORT: 8088
+      DRAND_CHAIN_HASH: b8525930172629e30477e25b56ac4c4a75850cd0b6c150a97d216ec64acb8df6
+      MOCK_BEACON_SEED: raffleroyale-dev-beacon-v1
+      MOCK_BEACON_PERIOD: 3
+      MOCK_BEACON_GENESIS_TIME: 1700000000
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./packages/raffle-draw:/workspace/packages/raffle-draw
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:8088/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   scheduler:
     build:

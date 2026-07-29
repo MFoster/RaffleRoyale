@@ -12,14 +12,17 @@ import {
   RaffleStatus,
   TransactionStatus,
 } from '@prisma/client';
-import { randomInt, randomUUID } from 'node:crypto';
+import { revealWinnerProof, type DrawProof } from '@raffleroyale/raffle-draw';
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AuthContext } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { BeaconService } from './beacon.service';
 import { CreateRaffleDto } from './dto/create-raffle.dto';
 import { PurchaseTicketsDto } from './dto/purchase-tickets.dto';
+import { RaffleExpirationScheduler } from './raffle-expiration.scheduler';
 
 export const MAX_RAFFLE_IMAGE_UPLOADS = 3;
 export const MAX_RAFFLE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -97,14 +100,34 @@ type PurchaseTicketsResult = {
   raffleStatus: RaffleStatus;
 };
 
-type ResolveWinnerResult = {
-  raffleId: string;
-  winnerTicketId: string;
-  winnerTicketNumber: number;
-  ticketCount: number;
-  randomIndex: number;
-  raffleStatus: RaffleStatus;
-};
+type ResolveWinnerResult =
+  | {
+      phase: 'committed';
+      raffleId: string;
+      raffleStatus: RaffleStatus;
+      beaconRound: number;
+      beaconChainHash: string;
+      scheme: string;
+      availableAt: string;
+    }
+  | {
+      phase: 'pending';
+      raffleId: string;
+      raffleStatus: RaffleStatus;
+      beaconRound: number;
+      availableAt: string;
+    }
+  | {
+      phase: 'revealed';
+      raffleId: string;
+      raffleStatus: RaffleStatus;
+      winnerTicketId: string;
+      winnerTicketNumber: number;
+      ticketCount: number;
+      winnerIndex: number;
+      beaconRound: number;
+      randomness: string;
+    };
 
 type DisbandRaffleResult = {
   raffleId: string;
@@ -134,6 +157,7 @@ const raffleDetailInclude = {
     select: {
       id: true,
       email: true,
+      displayName: true,
     },
   },
   events: {
@@ -147,6 +171,7 @@ const raffleDetailInclude = {
             select: {
               id: true,
               email: true,
+              displayName: true,
             },
           },
         },
@@ -162,7 +187,11 @@ type RaffleDetailBase = Prisma.RaffleGetPayload<{
 type RaffleDetailEvent = RaffleDetailBase['events'][number];
 type RaffleDetailWinnerTicket = NonNullable<RaffleDetailEvent['winnerTicket']>;
 
-export type RaffleDetail = Omit<RaffleDetailBase, 'events'> & {
+export type RaffleDetail = Omit<
+  RaffleDetailBase,
+  'events' | 'drawBeaconRound'
+> & {
+  drawBeaconRound: number | null;
   events: Array<
     Omit<RaffleDetailEvent, 'winnerTicket'> & {
       winnerTicket:
@@ -176,11 +205,27 @@ export type RaffleDetail = Omit<RaffleDetailBase, 'events'> & {
   >;
 };
 
+export type RaffleSummary = Omit<Raffle, 'drawBeaconRound'> & {
+  drawBeaconRound: number | null;
+};
+
+function serializeRaffle(raffle: Raffle): RaffleSummary {
+  return {
+    ...raffle,
+    drawBeaconRound:
+      raffle.drawBeaconRound === null ? null : Number(raffle.drawBeaconRound),
+  };
+}
+
 mkdirSync(RAFFLE_UPLOADS_DIRECTORY, { recursive: true });
 
 @Injectable()
 export class RaffleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly beacon: BeaconService,
+    private readonly expirationScheduler: RaffleExpirationScheduler,
+  ) {}
 
   async uploadImages(
     files: UploadImageFile[] = [],
@@ -256,7 +301,7 @@ export class RaffleService {
   async create(
     createRaffleDto: CreateRaffleDto,
     imageUploadOwnerId: string,
-  ): Promise<Raffle> {
+  ): Promise<RaffleSummary> {
     const endTime = new Date(createRaffleDto.endTime);
     if (endTime.getTime() <= Date.now()) {
       throw new BadRequestException('endTime must be in the future');
@@ -278,73 +323,92 @@ export class RaffleService {
       );
     }
 
-    return this.prisma.$transaction(
-      async (tx) => {
-        const pendingUploads = await this.getPendingUploadsForCreation(
-          createRaffleDto.imageUrls ?? [],
-          imageUploadOwnerId,
-          tx,
-        );
-
-        const raffle = await tx.raffle.create({
-          data: {
-            rafflerId: createRaffleDto.rafflerId,
-            title: createRaffleDto.title,
-            description: createRaffleDto.description,
-            imageUrls: pendingUploads.map((upload) => upload.urlPath),
-            itemType: createRaffleDto.itemType ?? ItemType.PHYSICAL,
-            totalTickets: createRaffleDto.totalTickets,
-            ticketPrice: createRaffleDto.ticketPrice,
-            minSellThrough: createRaffleDto.minSellThrough,
-            status,
+    const raffleId = randomUUID();
+    const scheduleCreated =
+      status === RaffleStatus.ACTIVE
+        ? await this.expirationScheduler.createExpirationSchedule(
+            raffleId,
             endTime,
-          },
-        });
+          )
+        : false;
 
-        if (pendingUploads.length > 0) {
-          const claimResult = await tx.pendingRaffleImageUpload.updateMany({
-            where: {
-              id: { in: pendingUploads.map((upload) => upload.id) },
-              ownerId: imageUploadOwnerId,
-              consumedAt: null,
-            },
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const pendingUploads = await this.getPendingUploadsForCreation(
+            createRaffleDto.imageUrls ?? [],
+            imageUploadOwnerId,
+            tx,
+          );
+
+          const raffle = await tx.raffle.create({
             data: {
-              raffleId: raffle.id,
-              consumedAt: new Date(),
+              id: raffleId,
+              rafflerId: createRaffleDto.rafflerId,
+              title: createRaffleDto.title,
+              description: createRaffleDto.description,
+              imageUrls: pendingUploads.map((upload) => upload.urlPath),
+              itemType: createRaffleDto.itemType ?? ItemType.PHYSICAL,
+              totalTickets: createRaffleDto.totalTickets,
+              ticketPrice: createRaffleDto.ticketPrice,
+              minSellThrough: createRaffleDto.minSellThrough,
+              status,
+              endTime,
             },
           });
 
-          if (claimResult.count !== pendingUploads.length) {
-            throw new ConflictException(
-              'One or more image uploads were already claimed.',
-            );
+          if (pendingUploads.length > 0) {
+            const claimResult = await tx.pendingRaffleImageUpload.updateMany({
+              where: {
+                id: { in: pendingUploads.map((upload) => upload.id) },
+                ownerId: imageUploadOwnerId,
+                consumedAt: null,
+              },
+              data: {
+                raffleId: raffle.id,
+                consumedAt: new Date(),
+              },
+            });
+
+            if (claimResult.count !== pendingUploads.length) {
+              throw new ConflictException(
+                'One or more image uploads were already claimed.',
+              );
+            }
           }
-        }
 
-        await tx.raffleEvent.create({
-          data: {
-            raffleId: raffle.id,
-            eventType: 'CREATED',
-            metadata: {
-              status,
-              totalTickets: raffle.totalTickets,
-              ticketPrice: raffle.ticketPrice,
+          await tx.raffleEvent.create({
+            data: {
+              raffleId: raffle.id,
+              eventType: 'CREATED',
+              metadata: {
+                status,
+                totalTickets: raffle.totalTickets,
+                ticketPrice: raffle.ticketPrice,
+              },
             },
-          },
-        });
+          });
 
-        return raffle;
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      },
-    );
+          return serializeRaffle(raffle);
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
+    } catch (error) {
+      if (scheduleCreated) {
+        await this.expirationScheduler.deleteExpirationSchedule(raffleId);
+      }
+      throw error;
+    }
   }
 
-  async findAll(): Promise<Raffle[]> {
-    return this.prisma.raffle.findMany({
+  async findAll(): Promise<RaffleSummary[]> {
+    const raffles = await this.prisma.raffle.findMany({
       orderBy: { createdAt: 'desc' },
     });
+
+    return raffles.map(serializeRaffle);
   }
 
   async findOne(id: string, auth?: AuthContext): Promise<RaffleDetail> {
@@ -360,8 +424,11 @@ export class RaffleService {
     const isOwner = auth?.userId === raffle.rafflerId;
     const isAdmin = auth?.role === 'ADMIN';
     const canSeeWinnerEmail = isOwner || isAdmin;
+    const serializedRaffle = serializeRaffle(raffle);
+
     return {
-      ...raffle,
+      ...serializedRaffle,
+      raffler: raffle.raffler,
       events: raffle.events.map((event) => ({
         ...event,
         winnerTicket: event.winnerTicket
@@ -512,13 +579,109 @@ export class RaffleService {
     });
   }
 
+  /**
+   * Determine whether an EXPIRED raffle met its minimum sell-through and is
+   * therefore eligible to draw a winner.
+   */
+  private isExpiredEligible(raffle: {
+    status: RaffleStatus;
+    totalTickets: number;
+    ticketsSold: number;
+    minSellThrough: number | null;
+  }): boolean {
+    if (raffle.status !== RaffleStatus.EXPIRED) {
+      return false;
+    }
+    const sellThroughPercent =
+      raffle.totalTickets === 0
+        ? 0
+        : (raffle.ticketsSold / raffle.totalTickets) * 100;
+    return (
+      raffle.minSellThrough !== null &&
+      sellThroughPercent >= raffle.minSellThrough
+    );
+  }
+
+  /**
+   * Advance a raffle's draw using the drand commit-reveal protocol.
+   *
+   * Phase 1 (commit): when a raffle first becomes resolvable (SOLD_OUT, or an
+   * EXPIRED raffle that met its minimum sell-through) we pin a *future* drand
+   * round whose randomness cannot yet exist, move the raffle to PENDING_DRAW,
+   * and record a DRAW_COMMITTED audit event. This makes the outcome
+   * unpredictable and impossible for anyone — including us — to grind.
+   *
+   * Phase 2 (reveal): once the committed round has been published, we fetch it,
+   * verify its BLS signature, deterministically derive the winning ticket from
+   * its randomness, and record a WINNER_SELECTED event with a fully
+   * re-verifiable proof.
+   */
   async resolveWinner(raffleId: string): Promise<ResolveWinnerResult> {
-    const result = await this.prisma.$transaction(
+    const raffle = await this.prisma.raffle.findUnique({
+      where: { id: raffleId },
+    });
+    if (!raffle) {
+      throw new NotFoundException(`Raffle ${raffleId} not found`);
+    }
+
+    const existingWinnerEvent = await this.prisma.raffleEvent.findFirst({
+      where: { raffleId, eventType: 'WINNER_SELECTED' },
+      select: { id: true },
+    });
+    if (existingWinnerEvent || raffle.status === RaffleStatus.COMPLETED) {
+      throw new ConflictException('Winner has already been resolved');
+    }
+
+    if (raffle.status === RaffleStatus.PENDING_DRAW) {
+      return this.revealDraw(raffleId);
+    }
+
+    const isSoldOut = raffle.status === RaffleStatus.SOLD_OUT;
+    if (!isSoldOut && !this.isExpiredEligible(raffle)) {
+      if (raffle.status === RaffleStatus.EXPIRED) {
+        throw new ConflictException(
+          'Expired raffle did not meet minimum sell-through',
+        );
+      }
+      throw new ConflictException(
+        'Only SOLD_OUT or eligible EXPIRED raffles can resolve a winner',
+      );
+    }
+
+    const ticketCount = await this.prisma.ticket.count({ where: { raffleId } });
+    if (ticketCount <= 0) {
+      throw new ConflictException('Cannot resolve winner with no tickets');
+    }
+
+    const committed = await this.commitDraw(raffleId);
+
+    // If the committed round is already available (e.g. a low lead time in
+    // tests, or a slow operator) reveal immediately; otherwise report the
+    // pending commitment so the background sweep can finish the draw once the
+    // beacon publishes the round.
+    if (Date.parse(committed.availableAt) <= Date.now()) {
+      return this.revealDraw(raffleId);
+    }
+    return committed;
+  }
+
+  /**
+   * Phase 1 of the draw. Pins a future beacon round and moves the raffle to
+   * PENDING_DRAW. Idempotent: re-committing an already-committed raffle returns
+   * the existing commitment.
+   */
+  private async commitDraw(
+    raffleId: string,
+  ): Promise<Extract<ResolveWinnerResult, { phase: 'committed' }>> {
+    const commitment = await this.beacon.buildCommitment(
+      Math.floor(Date.now() / 1000),
+    );
+
+    return this.prisma.$transaction(
       async (tx) => {
         const lockRows = await tx.$queryRaw<{ id: string }[]>(
           Prisma.sql`SELECT id FROM raffles WHERE id = ${raffleId} FOR UPDATE`,
         );
-
         if (lockRows.length === 0) {
           throw new NotFoundException(`Raffle ${raffleId} not found`);
         }
@@ -528,64 +691,159 @@ export class RaffleService {
           throw new NotFoundException(`Raffle ${raffleId} not found`);
         }
 
-        const existingWinnerEvent = await tx.raffleEvent.findFirst({
-          where: {
+        if (
+          raffle.status === RaffleStatus.PENDING_DRAW &&
+          raffle.drawBeaconRound !== null
+        ) {
+          return {
+            phase: 'committed' as const,
             raffleId,
-            eventType: 'WINNER_SELECTED',
-          },
-          select: {
-            id: true,
-          },
-        });
-
-        if (existingWinnerEvent) {
-          throw new ConflictException('Winner has already been resolved');
-        }
-
-        if (raffle.status === RaffleStatus.COMPLETED) {
-          throw new ConflictException('Winner has already been resolved');
+            raffleStatus: raffle.status,
+            beaconRound: Number(raffle.drawBeaconRound),
+            beaconChainHash: raffle.drawBeaconChainHash ?? commitment.chainHash,
+            scheme: raffle.drawScheme ?? commitment.scheme,
+            availableAt: (
+              raffle.drawAvailableAt ?? new Date(commitment.availableAt)
+            ).toISOString(),
+          };
         }
 
         const isSoldOut = raffle.status === RaffleStatus.SOLD_OUT;
-        const isExpired = raffle.status === RaffleStatus.EXPIRED;
-
-        if (!isSoldOut && !isExpired) {
+        if (!isSoldOut && !this.isExpiredEligible(raffle)) {
           throw new ConflictException(
             'Only SOLD_OUT or eligible EXPIRED raffles can resolve a winner',
           );
         }
 
-        if (isExpired) {
-          const sellThroughPercent =
-            raffle.totalTickets === 0
-              ? 0
-              : (raffle.ticketsSold / raffle.totalTickets) * 100;
-          const meetsMinSellThrough =
-            raffle.minSellThrough !== null &&
-            sellThroughPercent >= raffle.minSellThrough;
+        await tx.raffle.update({
+          where: { id: raffleId },
+          data: {
+            status: RaffleStatus.PENDING_DRAW,
+            drawBeaconRound: BigInt(commitment.round),
+            drawBeaconChainHash: commitment.chainHash,
+            drawScheme: commitment.scheme,
+            drawCommittedAt: new Date(commitment.committedAt),
+            drawAvailableAt: new Date(commitment.availableAt),
+          },
+        });
 
-          if (!meetsMinSellThrough) {
-            throw new ConflictException(
-              'Expired raffle did not meet minimum sell-through',
-            );
-          }
+        await tx.raffleEvent.create({
+          data: {
+            raffleId,
+            eventType: 'DRAW_COMMITTED',
+            metadata: {
+              algorithm: commitment.algorithm,
+              chainHash: commitment.chainHash,
+              scheme: commitment.scheme,
+              beaconRound: commitment.round,
+              committedAt: commitment.committedAt,
+              availableAt: commitment.availableAt,
+            },
+          },
+        });
+
+        return {
+          phase: 'committed' as const,
+          raffleId,
+          raffleStatus: RaffleStatus.PENDING_DRAW,
+          beaconRound: commitment.round,
+          beaconChainHash: commitment.chainHash,
+          scheme: commitment.scheme,
+          availableAt: commitment.availableAt,
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
+  }
+
+  /**
+   * Phase 2 of the draw. Fetches and verifies the committed beacon round, then
+   * deterministically derives and records the winning ticket. Returns a
+   * `pending` result if the committed round has not been published yet.
+   */
+  private async revealDraw(
+    raffleId: string,
+  ): Promise<Extract<ResolveWinnerResult, { phase: 'revealed' | 'pending' }>> {
+    const raffle = await this.prisma.raffle.findUnique({
+      where: { id: raffleId },
+    });
+    if (!raffle) {
+      throw new NotFoundException(`Raffle ${raffleId} not found`);
+    }
+    if (
+      raffle.status !== RaffleStatus.PENDING_DRAW ||
+      raffle.drawBeaconRound === null
+    ) {
+      throw new ConflictException('Raffle has no pending draw commitment');
+    }
+
+    const beaconRound = Number(raffle.drawBeaconRound);
+    const availableAt = raffle.drawAvailableAt ?? new Date(0);
+    if (availableAt.getTime() > Date.now()) {
+      return {
+        phase: 'pending',
+        raffleId,
+        raffleStatus: RaffleStatus.PENDING_DRAW,
+        beaconRound,
+        availableAt: availableAt.toISOString(),
+      };
+    }
+
+    const info = await this.beacon.getChainInfo();
+    const round = await this.beacon.getRound(beaconRound);
+    const ticketCount = await this.prisma.ticket.count({ where: { raffleId } });
+    if (ticketCount <= 0) {
+      throw new ConflictException('Cannot resolve winner with no tickets');
+    }
+
+    // Verifies the BLS signature + randomness and derives the winner index.
+    const proof = revealWinnerProof({ raffleId, ticketCount, round, info });
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const lockRows = await tx.$queryRaw<{ id: string }[]>(
+          Prisma.sql`SELECT id FROM raffles WHERE id = ${raffleId} FOR UPDATE`,
+        );
+        if (lockRows.length === 0) {
+          throw new NotFoundException(`Raffle ${raffleId} not found`);
         }
 
-        const ticketCount = await tx.ticket.count({ where: { raffleId } });
-        if (ticketCount <= 0) {
-          throw new ConflictException('Cannot resolve winner with no tickets');
+        const locked = await tx.raffle.findUnique({ where: { id: raffleId } });
+        if (!locked) {
+          throw new NotFoundException(`Raffle ${raffleId} not found`);
         }
 
-        const randomIndex = randomInt(0, ticketCount);
+        const existingWinnerEvent = await tx.raffleEvent.findFirst({
+          where: { raffleId, eventType: 'WINNER_SELECTED' },
+          select: { id: true },
+        });
+        if (existingWinnerEvent || locked.status === RaffleStatus.COMPLETED) {
+          throw new ConflictException('Winner has already been resolved');
+        }
+        if (locked.status !== RaffleStatus.PENDING_DRAW) {
+          throw new ConflictException('Raffle has no pending draw commitment');
+        }
+
+        const lockedCount = await tx.ticket.count({ where: { raffleId } });
+        if (lockedCount !== ticketCount) {
+          throw new ConflictException('Ticket count changed during draw');
+        }
+
         const winnerTicket = await tx.ticket.findFirst({
           where: { raffleId },
           orderBy: { ticketNumber: 'asc' },
-          skip: randomIndex,
+          skip: proof.winnerIndex,
         });
-
         if (!winnerTicket) {
           throw new NotFoundException('Winner ticket could not be determined');
         }
+
+        const fullProof: DrawProof = {
+          ...proof,
+          winnerTicketNumber: winnerTicket.ticketNumber,
+        };
 
         await tx.raffle.update({
           where: { id: raffleId },
@@ -601,27 +859,40 @@ export class RaffleService {
               winnerTicketId: winnerTicket.id,
               winnerTicketNumber: winnerTicket.ticketNumber,
               ticketCount,
-              randomIndex,
-              algorithm: 'crypto.randomInt-v1',
+              winnerIndex: fullProof.winnerIndex,
+              algorithm: fullProof.algorithm,
+              beacon: {
+                chainHash: fullProof.chainHash,
+                scheme: fullProof.scheme,
+                round: fullProof.round,
+                randomness: fullProof.randomness,
+                signature: fullProof.signature,
+                publicKey: fullProof.publicKey,
+              },
+              derivation: {
+                seed: fullProof.seed,
+                digest: fullProof.digest,
+              },
             },
           },
         });
 
         return {
+          phase: 'revealed' as const,
           raffleId,
+          raffleStatus: RaffleStatus.COMPLETED,
           winnerTicketId: winnerTicket.id,
           winnerTicketNumber: winnerTicket.ticketNumber,
           ticketCount,
-          randomIndex,
-          raffleStatus: RaffleStatus.COMPLETED,
+          winnerIndex: fullProof.winnerIndex,
+          beaconRound: fullProof.round,
+          randomness: fullProof.randomness,
         };
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       },
     );
-
-    return result;
   }
 
   async disbandRaffle(raffleId: string): Promise<DisbandRaffleResult> {

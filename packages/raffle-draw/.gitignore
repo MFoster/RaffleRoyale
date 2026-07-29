@@ -1,0 +1,6 @@
+# This package ships its compiled output (mirrors packages/queue-signature
+# shipping ready-to-run JS) so the api/jobs Docker images and the bind-mounted
+# dev containers can consume it without an extra build step. Re-include dist/
+# even though the root .gitignore ignores it globally.
+!dist/
+!dist/**

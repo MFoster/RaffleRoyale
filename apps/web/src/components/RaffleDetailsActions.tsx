@@ -18,14 +18,7 @@ import {
   subscribeAuthSession,
 } from '@/lib/auth-session';
 import { callApiWithAuthRetry, getApiErrorMessage } from '@/lib/generated-api';
-
-type RaffleStatus =
-  | 'DRAFT'
-  | 'ACTIVE'
-  | 'SOLD_OUT'
-  | 'EXPIRED'
-  | 'DISBANDED'
-  | 'COMPLETED';
+import type { RaffleStatus } from '@/lib/raffleStatus';
 
 type PurchaseResponse = {
   quantity: number;

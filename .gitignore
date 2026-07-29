@@ -6,6 +6,8 @@ node_modules/
 dist/
 coverage/
 apps/api/uploads/
+apps/infra/cdk.out/
+apps/infra/cdk.context.json
 
 .env
 .env.local

@@ -3,6 +3,8 @@ import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import PageContainer from '@/components/layout/PageContainer';
+import Section from '@/components/layout/Section';
 import SiteHeader from '@/components/SiteHeader';
 import MarketplaceBrowser from '@/components/marketplace/MarketplaceBrowser';
 import type { RaffleData } from '@/components/home/EnhancedRaffleCard';
@@ -16,7 +18,14 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic';
 
-type RaffleStatus = 'DRAFT' | 'ACTIVE' | 'SOLD_OUT' | 'EXPIRED' | 'DISBANDED' | 'COMPLETED';
+type RaffleStatus =
+  | 'DRAFT'
+  | 'ACTIVE'
+  | 'SOLD_OUT'
+  | 'PENDING_DRAW'
+  | 'EXPIRED'
+  | 'DISBANDED'
+  | 'COMPLETED';
 type RaffleItemType = 'PHYSICAL' | 'DIGITAL';
 type MarketplaceRaffleData = RaffleData & { itemType: RaffleItemType };
 
@@ -29,6 +38,7 @@ function parseRaffleStatus(value: unknown): RaffleStatus | null {
     value === 'DRAFT' ||
     value === 'ACTIVE' ||
     value === 'SOLD_OUT' ||
+    value === 'PENDING_DRAW' ||
     value === 'EXPIRED' ||
     value === 'DISBANDED' ||
     value === 'COMPLETED'
@@ -113,13 +123,13 @@ export default async function MarketplacePage() {
   const rafflesResult = await fetchMarketplaceRaffles();
 
   return (
-    <Box sx={{ pb: 8, background: royaleTokens.surface.heroGradient }}>
+    <Box sx={{ pb: { xs: 6, md: 10 }, background: royaleTokens.surface.heroGradient }}>
       <SiteHeader />
-      <Stack spacing={4}>
-        {rafflesResult.ok ? (
-          <MarketplaceBrowser raffles={rafflesResult.data} />
-        ) : (
-          <Box component="section" sx={{ py: { xs: 4, md: 6 } }}>
+      {rafflesResult.ok ? (
+        <MarketplaceBrowser raffles={rafflesResult.data} />
+      ) : (
+        <Section>
+          <PageContainer>
             <Paper variant="outlined" sx={{ maxWidth: 720, mx: 'auto', p: { xs: 3, md: 4 } }}>
               <Stack spacing={1.5}>
                 <Typography variant="h4" sx={{ fontWeight: 800 }}>
@@ -128,9 +138,9 @@ export default async function MarketplacePage() {
                 <Typography color="text.secondary">{rafflesResult.error}</Typography>
               </Stack>
             </Paper>
-          </Box>
-        )}
-      </Stack>
+          </PageContainer>
+        </Section>
+      )}
     </Box>
   );
 }

@@ -4,9 +4,9 @@ import { useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import AppLink from './AppLink';
+import PageContainer from './layout/PageContainer';
 import {
   clearAuthSession,
   hasAuthSession,
@@ -27,7 +27,7 @@ export default function SiteHeader() {
   }
 
   return (
-    <Container maxWidth="xl" sx={{ pt: 4 }}>
+    <PageContainer sx={{ pt: 4 }}>
       <Stack
         component="header"
         direction="row"
@@ -58,6 +58,9 @@ export default function SiteHeader() {
               <Button href="/marketplace" color="inherit" size="large">
                 Marketplace
               </Button>
+              <Button href="/account" color="inherit" size="large">
+                My account
+              </Button>
               <Button href="/raffles/create" variant="contained" size="large">
                 Create raffle
               </Button>
@@ -80,6 +83,6 @@ export default function SiteHeader() {
           )}
         </Stack>
       </Stack>
-    </Container>
+    </PageContainer>
   );
 }

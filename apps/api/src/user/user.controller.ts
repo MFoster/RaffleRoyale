@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -16,7 +17,9 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import type { AuthContext } from '../auth/auth.types';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import {
+  PublicProfile,
   PublicUser,
   UserTicketActivityItem,
   UserService,
@@ -41,6 +44,14 @@ export class UserController {
     return this.userService.findAll();
   }
 
+  @Get(':id/profile')
+  @Public()
+  getPublicProfile(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PublicProfile> {
+    return this.userService.getPublicProfile(id);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -48,6 +59,16 @@ export class UserController {
   ): Promise<PublicUser> {
     this.assertCanAccessUser(id, auth);
     return this.userService.findOne(id);
+  }
+
+  @Patch(':id')
+  updateProfile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateUserProfileDto: UpdateUserProfileDto,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<PublicUser> {
+    this.assertCanAccessUser(id, auth);
+    return this.userService.updateProfile(id, updateUserProfileDto);
   }
 
   @Get(':id/tickets')

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import WorkspacePremiumRounded from '@mui/icons-material/WorkspacePremiumRounded';
+import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -10,11 +11,14 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
+import AppLink from '@/components/AppLink';
 import ImagePlaceholder from '@/components/ImagePlaceholder';
 import RaffleImageCarousel from '@/components/RaffleImageCarousel';
 import RaffleDetailsActions from '@/components/RaffleDetailsActions';
 import SiteHeader from '@/components/SiteHeader';
+import WinnerDrawProof, { type DrawProofView } from '@/components/WinnerDrawProof';
 import { royaleTokens } from '@/design-system';
+import { getInitials, type RaffleStatus } from '@/lib/raffleStatus';
 import { raffleFindOne } from '@/generated/clients';
 import {
   getApiErrorMessage,
@@ -24,20 +28,26 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-type RaffleStatus =
-  | 'DRAFT'
-  | 'ACTIVE'
-  | 'SOLD_OUT'
-  | 'EXPIRED'
-  | 'DISBANDED'
-  | 'COMPLETED';
-
 type RaffleItemType = 'PHYSICAL' | 'DIGITAL';
 
 type WinnerEventDetails = {
   id: string;
   winnerTicketNumber: number;
+  winnerDisplayName: string | null;
   winnerEmail: string | null;
+};
+
+type RaffleSeller = {
+  id: string;
+  displayName: string | null;
+};
+
+type DrawCommitment = {
+  beaconRound: number;
+  scheme: string | null;
+  chainHash: string | null;
+  committedAt: string | null;
+  availableAt: string | null;
 };
 
 type RaffleDetails = {
@@ -54,7 +64,10 @@ type RaffleDetails = {
   startTime: string;
   endTime: string;
   createdAt: string;
+  seller: RaffleSeller | null;
   winnerEvent: WinnerEventDetails | null;
+  drawProof: DrawProofView | null;
+  drawCommitment: DrawCommitment | null;
 };
 
 type FetchRaffleResult =
@@ -67,6 +80,7 @@ const statusLabelByValue: Record<RaffleStatus, string> = {
   ACTIVE: 'Active',
   SOLD_OUT: 'Sold out',
   EXPIRED: 'Expired',
+  PENDING_DRAW: 'Drawing winner',
   DISBANDED: 'Disbanded',
   COMPLETED: 'Completed',
 };
@@ -79,6 +93,7 @@ const statusColorByValue: Record<
   ACTIVE: 'primary',
   SOLD_OUT: 'tertiary',
   EXPIRED: 'neutral',
+  PENDING_DRAW: 'primary',
   DISBANDED: 'secondary',
   COMPLETED: 'tertiary',
 };
@@ -89,6 +104,7 @@ function parseRaffleStatus(value: unknown): RaffleStatus | null {
     value === 'ACTIVE' ||
     value === 'SOLD_OUT' ||
     value === 'EXPIRED' ||
+    value === 'PENDING_DRAW' ||
     value === 'DISBANDED' ||
     value === 'COMPLETED'
   ) {
@@ -104,6 +120,101 @@ function parseRaffleItemType(value: unknown): RaffleItemType | null {
   }
 
   return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function findEventMetadata(
+  events: unknown,
+  eventType: string,
+): Record<string, unknown> | null {
+  if (!Array.isArray(events)) {
+    return null;
+  }
+  for (const event of events) {
+    const eventRecord = asRecord(event);
+    if (!eventRecord || eventRecord.eventType !== eventType) {
+      continue;
+    }
+    const metadata = asRecord(eventRecord.metadata);
+    if (metadata) {
+      return metadata;
+    }
+  }
+  return null;
+}
+
+function parseDrawProof(events: unknown, raffleId: string): DrawProofView | null {
+  const metadata = findEventMetadata(events, 'WINNER_SELECTED');
+  if (!metadata) {
+    return null;
+  }
+
+  const beacon = asRecord(metadata.beacon);
+  const derivation = asRecord(metadata.derivation);
+  if (!beacon || !derivation) {
+    // Legacy winners (pre commit-reveal) have no verifiable proof to render.
+    return null;
+  }
+
+  if (
+    typeof beacon.chainHash !== 'string' ||
+    typeof beacon.scheme !== 'string' ||
+    typeof beacon.round !== 'number' ||
+    typeof beacon.randomness !== 'string' ||
+    typeof beacon.signature !== 'string' ||
+    typeof beacon.publicKey !== 'string' ||
+    typeof derivation.seed !== 'string' ||
+    typeof derivation.digest !== 'string' ||
+    typeof metadata.ticketCount !== 'number' ||
+    typeof metadata.winnerIndex !== 'number' ||
+    typeof metadata.winnerTicketNumber !== 'number' ||
+    typeof metadata.algorithm !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    raffleId,
+    algorithm: metadata.algorithm,
+    ticketCount: metadata.ticketCount,
+    winnerIndex: metadata.winnerIndex,
+    winnerTicketNumber: metadata.winnerTicketNumber,
+    beacon: {
+      chainHash: beacon.chainHash,
+      scheme: beacon.scheme,
+      round: beacon.round,
+      randomness: beacon.randomness,
+      signature: beacon.signature,
+      publicKey: beacon.publicKey,
+    },
+    derivation: {
+      seed: derivation.seed,
+      digest: derivation.digest,
+    },
+  };
+}
+
+function parseDrawCommitment(events: unknown): DrawCommitment | null {
+  const metadata = findEventMetadata(events, 'DRAW_COMMITTED');
+  if (!metadata || typeof metadata.beaconRound !== 'number') {
+    return null;
+  }
+
+  return {
+    beaconRound: metadata.beaconRound,
+    scheme: typeof metadata.scheme === 'string' ? metadata.scheme : null,
+    chainHash: typeof metadata.chainHash === 'string' ? metadata.chainHash : null,
+    committedAt:
+      typeof metadata.committedAt === 'string' ? metadata.committedAt : null,
+    availableAt:
+      typeof metadata.availableAt === 'string' ? metadata.availableAt : null,
+  };
 }
 
 function parseRaffle(payload: unknown): RaffleDetails {
@@ -168,6 +279,7 @@ function parseRaffle(payload: unknown): RaffleDetails {
 
       const buyer = winnerTicketRecord.buyer;
       let winnerEmail: string | null = null;
+      let winnerDisplayName: string | null = null;
 
       if (
         typeof buyer === 'object' &&
@@ -178,16 +290,48 @@ function parseRaffle(payload: unknown): RaffleDetails {
         if (typeof buyerRecord.email === 'string') {
           winnerEmail = buyerRecord.email;
         }
+        if (
+          typeof buyerRecord.displayName === 'string' &&
+          buyerRecord.displayName.trim().length > 0
+        ) {
+          winnerDisplayName = buyerRecord.displayName;
+        }
       }
 
       return {
         id: eventRecord.id,
         winnerTicketNumber: winnerTicketRecord.ticketNumber,
+        winnerDisplayName,
         winnerEmail,
       };
     }
 
     return null;
+  })();
+
+  const seller = (() => {
+    const raffler = record.raffler;
+    if (
+      typeof raffler !== 'object' ||
+      raffler === null ||
+      Array.isArray(raffler)
+    ) {
+      return null;
+    }
+
+    const rafflerRecord = raffler as Record<string, unknown>;
+    if (typeof rafflerRecord.id !== 'string') {
+      return null;
+    }
+
+    return {
+      id: rafflerRecord.id,
+      displayName:
+        typeof rafflerRecord.displayName === 'string' &&
+        rafflerRecord.displayName.trim().length
+          ? rafflerRecord.displayName
+          : null,
+    };
   })();
 
   return {
@@ -209,7 +353,10 @@ function parseRaffle(payload: unknown): RaffleDetails {
     startTime: record.startTime,
     endTime: record.endTime,
     createdAt: record.createdAt,
+    seller,
     winnerEvent,
+    drawProof: parseDrawProof(record.events, record.id),
+    drawCommitment: parseDrawCommitment(record.events),
   };
 }
 
@@ -315,7 +462,9 @@ export default async function RaffleDetailsPage({
               const isWinnerState =
                 result.raffle.status === 'COMPLETED' || winnerEvent !== null;
               const winnerDisplayName =
-                winnerEvent?.winnerEmail ?? 'Winner account';
+                winnerEvent?.winnerDisplayName ??
+                winnerEvent?.winnerEmail ??
+                'Winner account';
 
               return (
             <Paper
@@ -386,6 +535,41 @@ export default async function RaffleDetailsPage({
                   </Paper>
                 ) : null}
 
+                {result.raffle.status === 'PENDING_DRAW' &&
+                result.raffle.drawCommitment ? (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 3,
+                      borderColor: alpha('#5B3DF5', 0.32),
+                      bgcolor: alpha('#5B3DF5', 0.06),
+                    }}
+                  >
+                    <Stack spacing={1}>
+                      <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: '0.08em' }}>
+                        Drawing the winner
+                      </Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                        Committed to drand round{' '}
+                        {String(result.raffle.drawCommitment.beaconRound)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        We have locked in a future public randomness round
+                        {result.raffle.drawCommitment.availableAt
+                          ? `, published around ${formatDateLabel(result.raffle.drawCommitment.availableAt)}`
+                          : ''}
+                        . The winner will be derived from its signature the moment
+                        it is released — provably chosen before the randomness
+                        even existed.
+                      </Typography>
+                    </Stack>
+                  </Paper>
+                ) : null}
+
+                {result.raffle.drawProof ? (
+                  <WinnerDrawProof proof={result.raffle.drawProof} />
+                ) : null}
+
                 {result.raffle.imageUrls.length > 0 ? (
                   <RaffleImageCarousel
                     imageUrls={result.raffle.imageUrls}
@@ -402,6 +586,45 @@ export default async function RaffleDetailsPage({
                 <Typography color="text.secondary">
                   {result.raffle.description ?? 'No description has been provided for this raffle.'}
                 </Typography>
+
+                {result.raffle.seller ? (
+                  <Paper
+                    component={AppLink}
+                    href={`/users/${result.raffle.seller.id}`}
+                    variant="outlined"
+                    sx={{
+                      p: 2.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      textDecoration: 'none',
+                      color: 'inherit',
+                      transition: 'border-color 120ms ease, background-color 120ms ease',
+                      '&:hover': {
+                        borderColor: alpha('#5B3DF5', 0.45),
+                        bgcolor: alpha('#5B3DF5', 0.04),
+                      },
+                    }}
+                  >
+                    <Avatar sx={{ bgcolor: 'primary.main', fontWeight: 700 }}>
+                      {getInitials(result.raffle.seller.displayName)}
+                    </Avatar>
+                    <Stack spacing={0.25} sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Listed by
+                      </Typography>
+                      <Typography sx={{ fontWeight: 700 }}>
+                        {result.raffle.seller.displayName ?? 'Raffle host'}
+                      </Typography>
+                    </Stack>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: 'primary.main', fontWeight: 700 }}
+                    >
+                      View profile
+                    </Typography>
+                  </Paper>
+                ) : null}
 
                 <Box
                   sx={{

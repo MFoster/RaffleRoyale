@@ -1,0 +1,20 @@
+{
+  "app": "npx tsx bin/infra.ts",
+  "context": {
+    "projectName": "raffle-royale",
+    "environmentName": "nonprod",
+    "githubOwner": "MFoster",
+    "githubRepository": "RaffleRoyale",
+    "githubEnvironment": "non-production",
+    "createGithubOidcProvider": true,
+    "databaseName": "raffleroyale",
+    "retainData": false,
+    "apiDesiredCount": 1,
+    "webDesiredCount": 1,
+    "jobsDesiredCount": 1,
+    "raffleSweepMinutes": 5,
+    "imageCleanupMinutes": 60,
+    "@aws-cdk/core:defaultCrossStackReferences": "strong",
+    "@aws-cdk/core:validateAgainstDefaultRules": true
+  }
+}
