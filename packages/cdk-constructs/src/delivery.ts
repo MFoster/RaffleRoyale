@@ -28,15 +28,13 @@ export class GitHubOidcDeliveryRole extends Construct {
         clientIds: ['sts.amazonaws.com'],
       });
     } else {
-      if (!config.githubOidcProviderArn) {
-        throw new Error(
-          'githubOidcProviderArn is required when createGithubOidcProvider is false',
-        );
-      }
+      const providerArn =
+        config.githubOidcProviderArn ??
+        `arn:${Aws.PARTITION}:iam::${Aws.ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com`;
       this.provider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
         this,
         'Provider',
-        config.githubOidcProviderArn,
+        providerArn,
       );
     }
 
@@ -66,12 +64,25 @@ export class GitHubOidcDeliveryRole extends Construct {
       new iam.PolicyStatement({
         actions: ['sts:AssumeRole'],
         resources: [
+          'lookup',
+          'file-publishing',
+          'image-publishing',
+          'deploy',
+        ].map((bootstrapRole) =>
           Stack.of(this).formatArn({
             service: 'iam',
             region: '',
             resource: 'role',
-            resourceName: `cdk-*-${Aws.ACCOUNT_ID}-${Aws.REGION}`,
+            resourceName: `cdk-hnb659fds-${bootstrapRole}-role-${Aws.ACCOUNT_ID}-${Aws.REGION}`,
           }),
+        ),
+      }),
+    );
+    this.role.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          `arn:${Aws.PARTITION}:ssm:${Aws.REGION}:${Aws.ACCOUNT_ID}:parameter/cdk-bootstrap/hnb659fds/version`,
         ],
       }),
     );

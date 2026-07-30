@@ -52,7 +52,6 @@ const services = new ServicesStack(
   },
 );
 
-registry.addStackDependency(delivery);
 platform.addStackDependency(registry);
 workloads.addStackDependency(platform);
 services.addStackDependency(workloads);

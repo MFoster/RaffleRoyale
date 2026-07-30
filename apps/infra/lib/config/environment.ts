@@ -46,7 +46,7 @@ export function loadEnvironmentConfig(app: App): RaffleRoyaleEnvironmentConfig {
   const createGithubOidcProvider = booleanContext(
     app,
     'createGithubOidcProvider',
-    true,
+    false,
   );
   const githubOidcProviderArn = app.node.tryGetContext(
     'githubOidcProviderArn',
