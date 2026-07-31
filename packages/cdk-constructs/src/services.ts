@@ -198,7 +198,7 @@ export class FargateServices extends Construct {
       minHealthyPercent: 50,
       maxHealthyPercent: 200,
       healthCheckGracePeriod: id === 'Jobs' ? undefined : Duration.seconds(60),
-      enableExecuteCommand: false,
+      enableExecuteCommand: true,
     });
   }
 
