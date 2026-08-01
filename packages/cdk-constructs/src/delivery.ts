@@ -96,6 +96,7 @@ export class GitHubOidcDeliveryRole extends Construct {
       new iam.PolicyStatement({
         actions: [
           'ecr:BatchCheckLayerAvailability',
+          'ecr:BatchGetImage',
           'ecr:CompleteLayerUpload',
           'ecr:DescribeImages',
           'ecr:DescribeRepositories',
@@ -104,13 +105,13 @@ export class GitHubOidcDeliveryRole extends Construct {
           'ecr:PutImage',
           'ecr:UploadLayerPart',
         ],
-        resources: [
+        resources: ['api', 'web', 'jobs'].map((service) =>
           Stack.of(this).formatArn({
             service: 'ecr',
             resource: 'repository',
-            resourceName: `${prefix}-*`,
+            resourceName: `${prefix}-${service}`,
           }),
-        ],
+        ),
       }),
     );
     this.role.addToPolicy(

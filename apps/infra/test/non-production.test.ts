@@ -94,6 +94,41 @@ test('delivery role trusts only the repository and can inspect migration tasks',
   }
   assert.match(policies, /ssm:GetParameter/);
   assert.match(policies, /parameter\/cdk-bootstrap\/hnb659fds\/version/);
+  const policyResources = Object.values(
+    template.findResources('AWS::IAM::Policy'),
+  ) as Array<{
+    Properties: {
+      PolicyDocument: {
+        Statement: Array<{
+          Action: string | string[];
+          Resource: unknown;
+        }>;
+      };
+    };
+  }>;
+  const statements = policyResources.flatMap(
+    ({ Properties }) => Properties.PolicyDocument.Statement,
+  );
+  assert.deepEqual(
+    statements.find(
+      ({ Action }) => Action === 'ecr:GetAuthorizationToken',
+    )?.Resource,
+    '*',
+  );
+  const ecrPush = statements.find(
+    ({ Action }) => Array.isArray(Action) && Action.includes('ecr:PutImage'),
+  );
+  assert.ok(ecrPush);
+  assert.ok(Array.isArray(ecrPush.Action));
+  assert.ok(ecrPush.Action.includes('ecr:BatchGetImage'));
+  const ecrResources = JSON.stringify(ecrPush.Resource);
+  for (const service of ['api', 'web', 'jobs']) {
+    assert.match(
+      ecrResources,
+      new RegExp(`:repository/raffle-royale-nonprod-${service}`),
+    );
+  }
+  assert.doesNotMatch(policies, /repository\/raffle-royale-nonprod-\*/);
 });
 
 test('registry uses immutable tags for all service repositories', () => {
