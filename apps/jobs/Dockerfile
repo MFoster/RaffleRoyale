@@ -52,6 +52,7 @@ COPY packages/queue-signature packages/queue-signature
 COPY packages/raffle-draw packages/raffle-draw
 COPY packages/db/prisma packages/db/prisma
 COPY --from=build /workspace/apps/jobs/dist apps/jobs/dist
+COPY apps/jobs/fixtures fixtures
 COPY apps/jobs/entrypoint.sh ./
 RUN chmod +x ./entrypoint.sh
 ENTRYPOINT ["./entrypoint.sh"]
