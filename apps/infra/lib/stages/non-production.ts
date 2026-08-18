@@ -6,7 +6,6 @@ import {
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import {
-  apiInternalUrl,
   ContainerRegistry,
   FargateServices,
   FargateWorkloads,
@@ -53,9 +52,6 @@ export class RegistryStack extends Stack {
     });
     new CfnOutput(this, 'JobsRepositoryName', {
       value: this.registry.jobsRepository.repositoryName,
-    });
-    new CfnOutput(this, 'ApiInternalUrl', {
-      value: apiInternalUrl(config),
     });
     tagStack(this, config);
   }
@@ -130,9 +126,9 @@ export class WorkloadsStack extends Stack {
     new CfnOutput(this, 'ClusterName', {
       value: platform.cluster.clusterName,
     });
-    new CfnOutput(this, 'ApplicationSubnetIds', {
+    new CfnOutput(this, 'PublicSubnetIds', {
       value: platform.vpc
-        .selectSubnets({ subnetGroupName: 'application' })
+        .selectSubnets({ subnetGroupName: 'public' })
         .subnetIds.join(','),
     });
     new CfnOutput(this, 'JobsSecurityGroupId', {
@@ -183,6 +179,12 @@ export class ServicesStack extends Stack {
     });
     new CfnOutput(this, 'JobsServiceName', {
       value: this.services.jobsService.serviceName,
+    });
+    new CfnOutput(this, 'ApiWakeAlarmName', {
+      value: this.services.apiWakeAlarm.alarmName,
+    });
+    new CfnOutput(this, 'WebWakeAlarmName', {
+      value: this.services.webWakeAlarm.alarmName,
     });
     tagStack(this, config);
   }

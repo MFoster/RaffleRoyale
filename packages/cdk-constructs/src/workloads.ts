@@ -7,10 +7,7 @@ import {
   aws_logs as logs,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import {
-  apiInternalUrl,
-  type RaffleRoyaleEnvironmentConfig,
-} from './config';
+import { type RaffleRoyaleEnvironmentConfig } from './config';
 import { NonProductionPlatform } from './platform';
 import { ContainerRegistry } from './registry';
 
@@ -76,7 +73,7 @@ export class MigrationWorkload extends Construct {
       entryPoint: ['/bin/sh', '-c'],
       command: [
         [
-          `export DATABASE_URL="postgresql://\${DB_USERNAME}:\${DB_PASSWORD}@${platform.database.instanceEndpoint.hostname}:${platform.database.instanceEndpoint.port}/${config.databaseName}?schema=public"`,
+          `export DATABASE_URL="postgresql://\${DB_USERNAME}:\${DB_PASSWORD}@${platform.database.clusterEndpoint.hostname}:${platform.database.clusterEndpoint.port}/${config.databaseName}?schema=public"`,
           'exec node apps/jobs/dist/index.js migrate',
         ].join('; '),
       ],
@@ -277,7 +274,8 @@ export class FargateWorkloads extends Construct {
         NODE_ENV: 'production',
         PORT: '3000',
         NEXT_SERVER_ORIGIN: 'http://127.0.0.1:3000',
-        API_PROXY_TARGET: apiInternalUrl(config),
+        API_PROXY_TARGET:
+          `http://${platform.loadBalancer.loadBalancerDnsName}/api`,
       },
     });
     container.addPortMappings({ containerPort: 3000 });
@@ -414,7 +412,7 @@ export class FargateWorkloads extends Construct {
     databaseName: string,
   ): string {
     return [
-      `export DATABASE_URL="postgresql://\${DB_USERNAME}:\${DB_PASSWORD}@${platform.database.instanceEndpoint.hostname}:${platform.database.instanceEndpoint.port}/${databaseName}?schema=public"`,
+      `export DATABASE_URL="postgresql://\${DB_USERNAME}:\${DB_PASSWORD}@${platform.database.clusterEndpoint.hostname}:${platform.database.clusterEndpoint.port}/${databaseName}?schema=public"`,
       command,
     ].join('; ');
   }

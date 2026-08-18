@@ -45,57 +45,21 @@ npm run test     # run workspace tests
 
 ## GitHub Actions CI/CD
 
-The repository includes two dedicated workflow files:
+The repository includes CI and CDK-based non-production deployment workflows:
 
 - `.github/workflows/ci-pr-main.yml`: on **pull requests to `main`**, run `npm ci`, `npm run prisma:generate`, `npm run lint`, `npm run test`, and `npm run build`.
-- `.github/workflows/push-main-ecr.yml`: on **pushes to `main`** (including merged PRs), run the same checks, build and push Docker images for `api` and `web` to Amazon ECR, then deploy both services to ECS Fargate.
+- `.github/workflows/push-main-ecr.yml`: validates main, publishes immutable
+  images, and invokes the reusable CDK deployment.
 
-Configure these GitHub repository settings before enabling ECR publish:
+`apps/infra` is authoritative for non-production AWS resources. See
+`apps/infra/README.md` for bootstrap and runtime details. Configure
+`AWS_ROLE_TO_ASSUME` in the protected `non-production` environment and
+`AWS_REGION` as a repository variable.
 
-- **Secret**: `AWS_ROLE_TO_ASSUME` (IAM role ARN for GitHub OIDC auth)
-- **Variable**: `AWS_REGION` (for example `us-east-1`)
-- **Variable**: `ECR_REPOSITORY_PREFIX` (images are pushed as `<prefix>-api` and `<prefix>-web`)
-- **Variable**: `WEB_API_PROXY_TARGET` (required; internal API URL used as the web Docker build arg, for example `http://api.raffle-royale.internal:3001`)
-- **Variable**: `ENFORCE_HTTPS` (`false` by default; set `true` once your domain + cert are ready)
-
-Configure these additional settings for ECS deploy:
-
-- **Variable**: `ECS_CLUSTER` (default `raffle-royale`)
-- **Variable**: `ECS_API_SERVICE` (default `raffle-royale-api`)
-- **Variable**: `ECS_WEB_SERVICE` (default `raffle-royale-web`)
-- **Variable**: `ECS_FRONTEND_URL` (required public URL used by API CORS; when `ENFORCE_HTTPS=true` it must be HTTPS)
-- **Variable**: `ECS_API_UPLOADS_EFS_FILESYSTEM_ID` (EFS file system ID used for API uploads)
-- **Variable**: `ECS_API_UPLOADS_EFS_ACCESS_POINT_ID` (EFS access point ID mounted at `/workspace/apps/api/uploads`)
-- **Secret**: `ECS_API_DATABASE_URL`
-- **Secret**: `ECS_JWT_SECRET`
-- **Secret**: `ECS_JWT_REFRESH_SECRET`
-
-One-time AWS bootstrap for ECS/Fargate (default VPC + public ALB + api/web services):
-
-```bash
-chmod +x scripts/aws/provision-ecs-fargate.sh
-AWS_REGION=us-east-1 \
-PUBLIC_DOMAIN=raffle.example.com \
-ROUTE53_HOSTED_ZONE_ID=Z1234567890ABC \
-ENABLE_HTTPS=true \
-./scripts/aws/provision-ecs-fargate.sh
-```
-
-If you already have an issued ACM certificate, pass `ACM_CERTIFICATE_ARN` instead of creating one via Route53.
-If your domain is not ready yet, leave `ENABLE_HTTPS` unset (or set `ENABLE_HTTPS=false`) to provision HTTP-only first.
-
-The script provisions/updates:
-- ECS cluster + services (`raffle-royale-api`, `raffle-royale-web`)
-- ALB + target groups (public traffic defaults to web service)
-- Optional HTTPS mode (`ENABLE_HTTPS=true`): ACM + HTTPS listener with HTTP(80) redirect to HTTPS
-- Security groups and CloudWatch log groups
-- ACM certificate DNS validation records and Route53 alias (when HTTPS mode is enabled and `PUBLIC_DOMAIN` + `ROUTE53_HOSTED_ZONE_ID` are provided)
-- Cloud Map private DNS namespace + API service discovery record for internal web→api proxy
-- EFS file system + mount targets + API uploads access point
-- ECS task execution/task roles (if missing)
-- Initial ECS task definitions from `.aws/ecs/task-definition-*.json`
-
-By default, the API is not publicly exposed through ALB path routing. If you need public ALB `/api/*` forwarding, set `EXPOSE_API_VIA_ALB=true` when running the provisioning script.
+Non-production API/web/jobs scale to zero. The first request after inactivity
+may receive 503 while Fargate and Aurora resume; retry shortly. Legacy
+`scripts/aws` and `.aws/ecs` paths are deprecated and retained only because
+their external/manual non-use has not been proven.
 
 ## Jobs app
 

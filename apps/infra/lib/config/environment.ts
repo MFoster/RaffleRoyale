@@ -35,6 +35,41 @@ function numberContext(app: App, key: string, fallback: number): number {
   return parsed;
 }
 
+function positiveNumberContext(app: App, key: string, fallback: number): number {
+  const value = app.node.tryGetContext(key) as unknown;
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`CDK context "${key}" must be a positive number`);
+  }
+  return parsed;
+}
+
+function auroraCapacityContext(app: App): number {
+  const value = positiveNumberContext(app, 'auroraServerlessMaxCapacity', 1);
+  if (value < 1 || value > 4 || !Number.isInteger(value * 2)) {
+    throw new Error(
+      'CDK context "auroraServerlessMaxCapacity" must be a half-step between 1 and 4 ACU',
+    );
+  }
+  return value;
+}
+
+function integerRangeContext(
+  app: App,
+  key: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const value = numberContext(app, key, fallback);
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(
+      `CDK context "${key}" must be an integer between ${minimum} and ${maximum}`,
+    );
+  }
+  return value;
+}
+
 export function loadEnvironmentConfig(app: App): RaffleRoyaleEnvironmentConfig {
   const imageTag = stringContext(app, 'imageTag');
   if (!/^[a-f0-9]{40}$/.test(imageTag)) {
@@ -67,9 +102,31 @@ export function loadEnvironmentConfig(app: App): RaffleRoyaleEnvironmentConfig {
     ...(githubOidcProviderArn ? { githubOidcProviderArn } : {}),
     databaseName: stringContext(app, 'databaseName', 'raffleroyale'),
     retainData: booleanContext(app, 'retainData', false),
-    apiDesiredCount: numberContext(app, 'apiDesiredCount', 1),
-    webDesiredCount: numberContext(app, 'webDesiredCount', 1),
-    jobsDesiredCount: numberContext(app, 'jobsDesiredCount', 1),
+    auroraServerlessMaxCapacity: auroraCapacityContext(app),
+    auroraAutoPauseMinutes: integerRangeContext(
+      app,
+      'auroraAutoPauseMinutes',
+      5,
+      5,
+      1440,
+    ),
+    apiDesiredCount: integerRangeContext(app, 'apiDesiredCount', 0, 0, 1),
+    webDesiredCount: integerRangeContext(app, 'webDesiredCount', 0, 0, 1),
+    jobsDesiredCount: integerRangeContext(app, 'jobsDesiredCount', 0, 0, 1),
+    serviceIdleMinutes: integerRangeContext(
+      app,
+      'serviceIdleMinutes',
+      10,
+      1,
+      60,
+    ),
+    jobsDrainMinutes: integerRangeContext(
+      app,
+      'jobsDrainMinutes',
+      5,
+      1,
+      60,
+    ),
     raffleSweepMinutes: numberContext(app, 'raffleSweepMinutes', 5),
     imageCleanupMinutes: numberContext(app, 'imageCleanupMinutes', 60),
   };
