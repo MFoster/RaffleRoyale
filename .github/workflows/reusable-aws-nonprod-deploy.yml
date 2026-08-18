@@ -263,42 +263,48 @@ jobs:
           CLUSTER=$(stack_output ClusterName)
           TASK_DEFINITION=$(stack_output JobsTaskDefinitionArn)
           CONTAINER=$(stack_output JobsContainerName)
-          SUBNETS=$(stack_output ApplicationSubnetIds)
+          SUBNETS=$(stack_output PublicSubnetIds)
           SECURITY_GROUP=$(stack_output JobsSecurityGroupId)
 
           SUBNET_JSON=$(printf '%s' "$SUBNETS" | jq -R 'split(",")')
           NETWORK=$(jq -cn \
             --argjson subnets "$SUBNET_JSON" \
             --arg securityGroup "$SECURITY_GROUP" \
-            '{awsvpcConfiguration:{subnets:$subnets,securityGroups:[$securityGroup],assignPublicIp:"DISABLED"}}')
+            '{awsvpcConfiguration:{subnets:$subnets,securityGroups:[$securityGroup],assignPublicIp:"ENABLED"}}')
 
-          TASK_ARN=$(aws ecs run-task \
-            --cluster "$CLUSTER" \
-            --launch-type FARGATE \
-            --task-definition "$TASK_DEFINITION" \
-            --network-configuration "$NETWORK" \
-            --query 'tasks[0].taskArn' \
-            --output text)
+          for attempt in 1 2 3; do
+            TASK_ARN=$(aws ecs run-task \
+              --cluster "$CLUSTER" \
+              --launch-type FARGATE \
+              --task-definition "$TASK_DEFINITION" \
+              --network-configuration "$NETWORK" \
+              --query 'tasks[0].taskArn' \
+              --output text)
 
-          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
-            echo "ECS did not start the migration task."
-            exit 1
-          fi
+            if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+              echo "ECS did not start migration attempt ${attempt}."
+              sleep 30
+              continue
+            fi
 
-          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
-          EXIT_CODE=$(aws ecs describe-tasks \
-            --cluster "$CLUSTER" \
-            --tasks "$TASK_ARN" \
-            --query "tasks[0].containers[?name=='${CONTAINER}'].exitCode | [0]" \
-            --output text)
+            aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+            EXIT_CODE=$(aws ecs describe-tasks \
+              --cluster "$CLUSTER" \
+              --tasks "$TASK_ARN" \
+              --query "tasks[0].containers[?name=='${CONTAINER}'].exitCode | [0]" \
+              --output text)
+            if [ "$EXIT_CODE" = "0" ]; then
+              exit 0
+            fi
 
-          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration attempt ${attempt} failed; Aurora may still be resuming."
             aws ecs describe-tasks \
               --cluster "$CLUSTER" \
               --tasks "$TASK_ARN" \
               --query 'tasks[0].{stopCode:stopCode,stoppedReason:stoppedReason,containers:containers[*].{name:name,exitCode:exitCode,reason:reason}}'
-            exit 1
-          fi
+            sleep 30
+          done
+          exit 1
 
   services:
     name: Roll out services and smoke test
@@ -332,7 +338,7 @@ jobs:
             --require-approval never \
             --context imageTag=${{ inputs.image_tag }}
 
-      - name: Wait for service stability
+      - name: Wake services, wait for stability, and smoke test
         run: |
           stack_output() {
             aws cloudformation describe-stacks \
@@ -344,20 +350,64 @@ jobs:
           CLUSTER=$(stack_output ClusterName)
           API_SERVICE=$(stack_output ApiServiceName)
           WEB_SERVICE=$(stack_output WebServiceName)
-          JOBS_SERVICE=$(stack_output JobsServiceName)
+          API_WAKE_ALARM=$(stack_output ApiWakeAlarmName)
+          WEB_WAKE_ALARM=$(stack_output WebWakeAlarmName)
+          ALB_URL=$(stack_output AlbUrl)
 
+          restore_zero() {
+            cleanup_status=0
+            aws cloudwatch disable-alarm-actions \
+              --alarm-names "$API_WAKE_ALARM" "$WEB_WAKE_ALARM" > /dev/null ||
+              cleanup_status=1
+            for service in "$API_SERVICE" "$WEB_SERVICE"; do
+              aws ecs update-service \
+                --cluster "$CLUSTER" \
+                --service "$service" \
+                --desired-count 0 > /dev/null ||
+                cleanup_status=1
+            done
+            alarms_cleared=false
+            for attempt in $(seq 1 12); do
+              ACTIVE_ALARMS=$(aws cloudwatch describe-alarms \
+                --alarm-names "$API_WAKE_ALARM" "$WEB_WAKE_ALARM" \
+                --query "MetricAlarms[?StateValue!='OK'].AlarmName" \
+                --output text 2>/dev/null || true)
+              if [ -z "$ACTIVE_ALARMS" ]; then
+                alarms_cleared=true
+                break
+              fi
+              sleep 15
+            done
+            if [ "$alarms_cleared" != "true" ]; then
+              echo "Wake alarms did not clear before scaling actions were restored."
+              cleanup_status=1
+            fi
+            aws cloudwatch enable-alarm-actions \
+              --alarm-names "$API_WAKE_ALARM" "$WEB_WAKE_ALARM" > /dev/null ||
+              cleanup_status=1
+            return "$cleanup_status"
+          }
+          on_exit() {
+            command_status=$?
+            trap - EXIT
+            if ! restore_zero; then
+              exit 1
+            fi
+            exit "$command_status"
+          }
+          trap on_exit EXIT
+
+          for service in "$API_SERVICE" "$WEB_SERVICE"; do
+            aws ecs update-service \
+              --cluster "$CLUSTER" \
+              --service "$service" \
+              --desired-count 1 > /dev/null
+          done
           aws ecs wait services-stable \
             --cluster "$CLUSTER" \
-            --services "$API_SERVICE" "$WEB_SERVICE" "$JOBS_SERVICE"
+            --services "$API_SERVICE" "$WEB_SERVICE"
 
-      - name: Smoke test ALB routes
-        run: |
-          ALB_URL=$(aws cloudformation describe-stacks \
-            --stack-name "$SERVICES_STACK" \
-            --query "Stacks[0].Outputs[?OutputKey=='AlbUrl'].OutputValue | [0]" \
-            --output text)
-
-          curl --fail --silent --show-error --retry 12 --retry-all-errors \
+          curl --fail --silent --show-error --retry 20 --retry-all-errors \
             --retry-delay 10 "${ALB_URL}/" > /dev/null
-          curl --fail --silent --show-error --retry 12 --retry-all-errors \
+          curl --fail --silent --show-error --retry 20 --retry-all-errors \
             --retry-delay 10 "${ALB_URL}/api/health" > /dev/null

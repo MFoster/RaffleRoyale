@@ -9,9 +9,13 @@ export type RaffleRoyaleEnvironmentConfig = {
   githubOidcProviderArn?: string;
   databaseName: string;
   retainData: boolean;
+  auroraServerlessMaxCapacity: number;
+  auroraAutoPauseMinutes: number;
   apiDesiredCount: number;
   webDesiredCount: number;
   jobsDesiredCount: number;
+  serviceIdleMinutes: number;
+  jobsDrainMinutes: number;
   raffleSweepMinutes: number;
   imageCleanupMinutes: number;
 };

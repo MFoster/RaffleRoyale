@@ -1,10 +1,11 @@
 # RaffleRoyale non-production AWS CDK
 
-This app creates a fresh non-production environment in five deployment layers:
+This app is the authoritative definition of the AWS non-production environment
+and creates it in five deployment layers:
 
 1. `RaffleRoyaleNonprodDelivery` – GitHub OIDC delivery role.
 2. `RaffleRoyaleNonprodRegistry` – immutable ECR repositories.
-3. `RaffleRoyaleNonprodPlatform` – VPC, ALB, ECS cluster, RDS, EFS, SQS, and Scheduler group.
+3. `RaffleRoyaleNonprodPlatform` – VPC, ALB, ECS cluster, Aurora, EFS, SQS, and Scheduler group.
 4. `RaffleRoyaleNonprodWorkloads` – isolated migration task definition.
 5. `RaffleRoyaleNonprodServices` – service task definitions, ECS services, listener routing, recurring jobs, and alarms.
 
@@ -115,14 +116,33 @@ EFS, database, queue, or ALB values to be duplicated in GitHub variables.
 
 ## Runtime notes
 
-- RDS is private and single-instance by design.
+- The VPC has public workload subnets and isolated data subnets, with no NAT
+  Gateway. Fargate tasks receive public IPs for outbound access, but their
+  security groups have no public ingress. Only the ALB can reach API/web, and
+  only API/jobs (including migrations) can reach Aurora on port 5432.
+- Aurora PostgreSQL Serverless v2 is private, uses 0–1 ACU by default, and
+  auto-pauses after five idle minutes. Non-production data is disposable.
 - API and jobs construct `DATABASE_URL` inside the container from generated
   Secrets Manager credentials; secret values are not placed in task-definition
   plaintext.
+- API, web, and jobs services default to zero tasks with maximum capacity one.
+  A cold ALB request increments `HTTPCode_ELB_503_Count` when there are no
+  healthy targets and wakes both API and web. The initial request can receive
+  503; retry after roughly one to several minutes while Fargate and Aurora
+  resume. Both services return to zero after ten idle minutes.
+- Jobs wake when visible or in-flight SQS demand is non-zero and return to zero
+  only after the queue has remained drained for five minutes.
 - API cron flags are disabled and native Scheduler integration is enabled.
   One-time raffle schedules send signed `expire-raffle` messages to SQS.
 - EventBridge rules run `reconcile-expired-raffles` every five minutes and
   `cleanup-pending-images` hourly as one-off ECS tasks. The jobs task mounts the
   uploads access point so cleanup removes both database rows and EFS files.
-- Legacy `.aws/ecs` definitions and `scripts/aws` provisioning remain available
-  until the CDK environment is validated.
+- Deployments temporarily wake API and web, wait for stability, retry cold
+  migrations and smoke tests, and restore desired count zero on exit.
+- Legacy `.aws/ecs` definitions and `scripts/aws` provisioning are deprecated
+  and are not part of the non-production deployment workflow. They remain
+  undeleted because all external/manual uses have not been disproven.
+
+Cost controls are typed CDK context values in `cdk.json`:
+`auroraServerlessMaxCapacity`, `auroraAutoPauseMinutes`,
+`serviceIdleMinutes`, and `jobsDrainMinutes`.

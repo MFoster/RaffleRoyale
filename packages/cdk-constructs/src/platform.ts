@@ -8,15 +8,12 @@ import {
   aws_elasticloadbalancingv2 as elbv2,
   aws_iam as iam,
   aws_rds as rds,
-  aws_route53 as route53,
   aws_scheduler as scheduler,
   aws_secretsmanager as secretsmanager,
-  aws_servicediscovery as servicediscovery,
   aws_sqs as sqs,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import {
-  privateNamespaceName,
   type RaffleRoyaleEnvironmentConfig,
   resourcePrefix,
 } from './config';
@@ -26,8 +23,7 @@ export class NonProductionPlatform extends Construct {
   readonly vpc: ec2.Vpc;
   readonly cluster: ecs.Cluster;
   readonly loadBalancer: elbv2.ApplicationLoadBalancer;
-  readonly namespace: servicediscovery.PrivateDnsNamespace;
-  readonly database: rds.DatabaseInstance;
+  readonly database: rds.DatabaseCluster;
   readonly databaseSecret: secretsmanager.Secret;
   readonly jwtSecret: secretsmanager.Secret;
   readonly jwtRefreshSecret: secretsmanager.Secret;
@@ -54,7 +50,7 @@ export class NonProductionPlatform extends Construct {
     this.vpc = new ec2.Vpc(this, 'Vpc', {
       vpcName: `${this.prefix}-vpc`,
       maxAzs: 2,
-      natGateways: 1,
+      natGateways: 0,
       subnetConfiguration: [
         {
           name: 'public',
@@ -103,11 +99,6 @@ export class NonProductionPlatform extends Construct {
       ec2.Port.tcp(3001),
       'ALB to API',
     );
-    this.apiSecurityGroup.addIngressRule(
-      this.webSecurityGroup,
-      ec2.Port.tcp(3001),
-      'web proxy to API',
-    );
     this.webSecurityGroup.addIngressRule(
       this.albSecurityGroup,
       ec2.Port.tcp(3000),
@@ -142,12 +133,6 @@ export class NonProductionPlatform extends Construct {
       vpcSubnets: { subnetGroupName: 'public' },
     });
 
-    this.namespace = new servicediscovery.PrivateDnsNamespace(this, 'Namespace', {
-      name: privateNamespaceName(config),
-      vpc: this.vpc,
-      description: `${this.prefix} private service discovery`,
-    });
-
     this.databaseSecret = new secretsmanager.Secret(this, 'DatabaseSecret', {
       secretName: `${this.prefix}/database`,
       generateSecretString: {
@@ -161,26 +146,26 @@ export class NonProductionPlatform extends Construct {
       config.retainData ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     );
 
-    this.database = new rds.DatabaseInstance(this, 'Database', {
-      instanceIdentifier: `${this.prefix}-postgres`,
-      engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_16_13,
+    this.database = new rds.DatabaseCluster(this, 'Database', {
+      clusterIdentifier: `${this.prefix}-aurora-postgres`,
+      engine: rds.DatabaseClusterEngine.auroraPostgres({
+        version: rds.AuroraPostgresEngineVersion.VER_16_13,
+      }),
+      writer: rds.ClusterInstance.serverlessV2('writer', {
+        publiclyAccessible: false,
       }),
       credentials: rds.Credentials.fromSecret(this.databaseSecret),
-      databaseName: config.databaseName,
+      defaultDatabaseName: config.databaseName,
       vpc: this.vpc,
       vpcSubnets: { subnetGroupName: 'database' },
       securityGroups: [databaseSecurityGroup],
-      instanceType: ec2.InstanceType.of(
-        ec2.InstanceClass.BURSTABLE4_GRAVITON,
-        ec2.InstanceSize.MICRO,
-      ),
-      allocatedStorage: 20,
-      maxAllocatedStorage: 100,
       storageEncrypted: true,
-      multiAz: false,
-      publiclyAccessible: false,
-      backupRetention: Duration.days(3),
+      serverlessV2MinCapacity: 0,
+      serverlessV2MaxCapacity: config.auroraServerlessMaxCapacity,
+      serverlessV2AutoPauseDuration: Duration.minutes(
+        config.auroraAutoPauseMinutes,
+      ),
+      backup: { retention: Duration.days(1) },
       deletionProtection: config.retainData,
       deleteAutomatedBackups: !config.retainData,
       removalPolicy: config.retainData
@@ -198,7 +183,7 @@ export class NonProductionPlatform extends Construct {
     this.uploadsFileSystem = new efs.FileSystem(this, 'UploadsFileSystem', {
       fileSystemName: `${this.prefix}-uploads`,
       vpc: this.vpc,
-      vpcSubnets: { subnetGroupName: 'application' },
+      vpcSubnets: { subnetGroupName: 'database' },
       securityGroup: efsSecurityGroup,
       encrypted: true,
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
