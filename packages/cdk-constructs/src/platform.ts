@@ -146,7 +146,7 @@ export class NonProductionPlatform extends Construct {
       config.retainData ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     );
 
-    this.database = new rds.DatabaseCluster(this, 'Database', {
+    this.database = new rds.DatabaseCluster(this, 'AuroraDatabase', {
       clusterIdentifier: `${this.prefix}-aurora-postgres`,
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_16_13,
